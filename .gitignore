@@ -1,0 +1,59 @@
+# Blacklist files/folders in same directory as the .gitignore file
+/*
+
+# Whitelist some files
+!.gitignore
+!README.md
+!CONTRIBUTING.md
+
+# Whitelist subdirectory
+# trailing "/" is optional for folders, may match file though.
+# "/" is NOT optional when followed by a *
+
+!input/
+!input/datasets/
+!input/R/
+!input/regions/
+!input/time/
+input/build/*
+input/data/*
+!algo/
+!input/
+!modules/
+!post/
+!tools/
+!tools/magicc
+!startboost.gms
+tools/magicc/tmp/*
+input/time/time.inc
+!input/results_ssp2_bau_start.gdx
+
+#Calibrations
+input/calibrations/build
+input/calibrations/temp
+
+# Always ignore
+.DS_Store
+.idea
+.RData
+.Rhistory
+.Rproj.user
+.vscode
+rsconnect
+svn-commit.tmp
+*.gpr
+*.log
+*.lst
+*.lxi
+*.par
+*.Rproj
+*.tar.gz
+*.zip
+*.~gm
+*.Rprofvis
+*/225*/
+.#*
+.svn
+tools/python/*
+venv/
+input/data/
