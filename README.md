@@ -10,6 +10,7 @@ This is RICE50+, a multi-regional DICE-like Integrated Assessment Model.
 
 1) Have GAMS installed (https://www.gams.com/, you will need a working `GAMS/CONOPT` license).
 
+
 2) Download and unzip calibrated input data from:  https://github.com/witch-team/RICE50xmodel/releases/download/v1.0.0/data_ed57.zip
 
 3) Run the model  in Gams IDE/Studio or in the shell.
