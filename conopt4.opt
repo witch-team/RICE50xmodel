@@ -1,0 +1,5 @@
+rtredg=1e-11
+rtbndt=1e-12
+rtmaxv=1e10  # less makes things crash in ssp5
+lfstal=1e5
+rtobjr=1e-12
