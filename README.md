@@ -1,7 +1,7 @@
 # The RICE50+ model
 
 Version 1.0
-This is RICE50+, a multi-regional DICE-like Integrated Assessment Model.
+This is RICE50+, a multi-regional Integrated Assessment Model, described in the paper 'Persistent inequality in economically optimal climate policies', Gazzotti et. al, 2021, Nature Communications  https://www.nature.com/articles/s41467-021-23613-y
 
 
 <br>
