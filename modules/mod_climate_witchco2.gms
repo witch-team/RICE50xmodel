@@ -29,6 +29,7 @@ SET m  'Climate layers' /
    low    'Deep Oceans'
 /;
 alias (m,mm);
+set mbox(m) /atm,upp,low/;    
 
 ## INCLUDE DATA
 #_________________________________________________________________________
@@ -173,10 +174,12 @@ $elseif.ph %phase%=='eqs'
 # WORLD EMISSIONS --------------------------------------
 * World CO2 emissions (in GTonC)
 eq_w_emi_co2(t)..   W_EMI('co2',t)  =E=  ( (sum(n$reg(n), E(t,n)) + sum(n$(not reg(n)), E.l(t,n)) ) * CO2toC  )
-                                     /   wemi2qemi('co2')  ; # Carbon
+                                     /   wemi2qemi('co2')  
+$if set mod_emission_pulse           + emission_pulse('co2',t)                                     
+                                     ; # Carbon
 
 * Accumulation of CARBON in the atmosphere / upper box / deep oceans
-eq_wcum_emi_co2(m,t+1)..   WCUM_EMI('co2',m,t+1)  =E=  sum(mm, cmphi(mm,m) * WCUM_EMI('co2',mm,t))     # exchange transfer in matrix from previous values
+eq_wcum_emi_co2(m,t+1)$mbox(m)..   WCUM_EMI('co2',m,t+1)  =E=  sum(mm, cmphi(mm,m) * WCUM_EMI('co2',mm,t))     # exchange transfer in matrix from previous values
                                                    +   (tstep * W_EMI('co2',t))$(sameas(m,'atm'))  ;   # + new emi-values added in atm level
                                                                                                        # Carbon
 * CO2 radiative forcing
@@ -186,7 +189,9 @@ eq_rf_co2(t)..   RF('co2',t)  =E=  rfc('co2','alpha')*(log(WCUM_EMI('co2','atm',
 eq_rf_oghg(t)..   RFoth(t)  =E=  oghg_coeff('intercept') + oghg_coeff('slope') * RF('co2',t)  ;
 
 * Total radiative forcing
-eq_forc(t)..   FORC(t)  =E=  RF('co2',t) + RFoth(t)  ;
+eq_forc(t)..   FORC(t)  =E=  RF('co2',t) + RFoth(t)  
+$if set mod_srm + geoeng_forcing*(wsrm(t) + sum(nn$reg(nn), (SRM(t,nn) - SRM.l(t,nn))))
+;
 
 * Global temperature increase from pre-industrial levels
 eq_tatm(t+1)..   TATM(t+1)  =E=  TATM(t) +  tempc('sigma1')*(  FORC(t)
@@ -209,28 +214,10 @@ $elseif.ph %phase%=='after_solve'
 # is called.
 #............................................................
 
-$set phase 'simulate_1'
-$batinclude 'modules/hub_climate'
-$set phase 'after_solve'
-
-#............................................................
-# NOTE: by calling hub_climate you are automatically
-# selecting the simulate_1 phase of the corrispondent
-# climate module.
-#............................................................
-
-
-
-#=========================================================================
-*   ///////////////////////     SIMULATION    ///////////////////////
-#=========================================================================
-
-##  SIMULATION HALFLOOP 1
-#_________________________________________________________________________
-$elseif.ph %phase%=='simulate_1'
-
 * World CO2 emissions (in GTonC!)
-W_EMI.l('co2',t)  =  (sum(n, E.l(t,n))  * CO2toC ) / wemi2qemi('co2') ; #Carbon
+W_EMI.l('co2',t)  =  (sum(n, E.l(t,n))  * CO2toC ) / wemi2qemi('co2') 
+$if set mod_emission_pulse           + emission_pulse('co2',t)   
+; #Carbon
 
 * Accumulation of Carbon in the atmosphere / upper box / deep oceans
 WCUM_EMI.l('co2',m,t+1)  =  sum(mm, cmphi(mm,m) * WCUM_EMI.l('co2',mm,t))    # exchange transfer in matrix from previous values
@@ -243,7 +230,9 @@ RF.l('co2',t)  =  rfc('co2','alpha')*(log(WCUM_EMI.l('co2','atm',t)) - log(rfc('
 RFoth.l(t)  =  oghg_coeff('intercept') + oghg_coeff('slope') * RF.l('co2',t)  ;
 
 * Total radiative forcing
-FORC.l(t)  =  RF.l('co2',t) + RFoth.l(t)   ;
+FORC.l(t)  =  RF.l('co2',t) + RFoth.l(t)   
+$if set mod_srm +geoeng_forcing*sum(n,SRM.l(t,n))
+;
 
 * Global temperature increase from pre-industrial levels
 TATM.l(t+1)  =  TATM.l(t) +  tempc('sigma1')*( FORC.l(t)
@@ -252,7 +241,6 @@ TATM.l(t+1)  =  TATM.l(t) +  tempc('sigma1')*( FORC.l(t)
 
 * Ocean temperature
 TOCEAN.l(t+1)  =  TOCEAN.l(t) + tempc('heat_ocean')*(TATM.l(t)-TOCEAN.l(t));
-
 
 #===============================================================================
 *     ///////////////////////     REPORTING     ///////////////////////

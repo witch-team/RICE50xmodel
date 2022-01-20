@@ -18,6 +18,18 @@ $setglobal t_max_miu 38
 * MIU maximum reacheable upperbound
 $setglobal max_miuup 1.2
 
+* Carbon-intensity transition curve
+* | linear_pure | linear_soft | sigmoid_HHs | sigmoid_Hs | sigmoid_Ms | sigmoid_Ls | sigmoid_LLs |
+$setglobal sig_trns_type 'sigmoid_Ls'
+
+* Time of full-convergence to dice-ref carbon-intensity curve
+* | 28 | 38 | 48 | 58 |
+$setglobal sig_trns_end  '38'
+
+* SSP-n hypothesis on dice-reference curve for carbon-intensity
+* |original | discounted |
+$setglobal sig_dice_ref_curve 'discounted'
+
 
 ## SETS
 #_________________________________________________________________________
@@ -77,12 +89,11 @@ PARAMETERS
    t_min_miu    'time t when min_miu value can be reached'           / %t_min_miu%    / # 7 - 2045
    max_miu     'upper bound for control rate MIU from t_max_miu'     / %max_miuup%  / # the old DICE limmiu
    t_max_miu    'time t when max_miu value can be reached'           / %t_max_miu%  / # 28 - 2150
+   min_miuoghg 'upper bound for control rate MIU at t_min_miu'       / 0.7  / # best compromise
+   max_miuoghg 'upper bound for control rate MIU from tmax'        / 1    / # best compromise
 ;
 
 ##  PARAMETERS EVALUATED ----------
-PARAMETERS
-    world_e(t)
-;
 
 SCALAR
 * Conversion coefficients
@@ -124,6 +135,8 @@ sig0(n)    = sigma('1',n)    ;
 e0(n) = q0(n) * sig0(n);
 
 
+$if %baseline%=='ssp5' fosslim=10000;
+
 ##  DECLARE VARIABLES
 #_________________________________________________________________________
 $elseif.ph %phase%=='declare_vars'
@@ -147,13 +160,26 @@ VARIABLES
 POSITIVE VARIABLES  ABATEDEMI, MIU ;
 
 # VARIABLES STARTING LEVELS 
-* to help convergence if no startboost is loaded
      EIND.l(t,n) = sigma(t,n)*ykali(t,n) ;
         E.l(t,n) = EIND.l(t,n) + eland_bau('uniform',t,n) ;
       MIU.l(t,n) = 0 ; 
 ABATEDEMI.l(t,n) = 0 ;
 
+## EMISSIONS OGHG ----------
+$ifthen.oghg %climate% == 'witchoghg'
+VARIABLES
+    EOGHG(oghg,t,n)       'Total OGHG emissions [GtCO2eq/year]'
+    COGHGE(oghg,t)        'Cumulative OGHG emissions [GtCO2eq]'
+    MIU_OGHG(oghg,t,n)    'Emission control rate GHGs'
+    ABATEDOGHG(oghg,t,n)  'Abated OGHG Emissions [GtCO2eq/year]'
+;
+POSITIVE VARIABLES  ABATEDOGHG, MIU_OGHG;
 
+# VARIABLES STARTING LEVELS 
+     EOGHG.l(oghg,t,n) = oghg_emi_bau(oghg,t,n) ;
+ABATEDOGHG.l(oghg,t,n) = 0 ;
+  MIU_OGHG.l(oghg,t,n) = 0 ;
+$endif.oghg
 
 ##  COMPUTE VARIABLES
 #_________________________________________________________________________
@@ -172,6 +198,13 @@ CCAETOT.FX(tfirst)  = cumeind0 + cumetree0 ;
 CCO2EIND.FX(tfirst) = 0 ;
 CCO2ETOT.FX(tfirst) = 0 ;
 
+##  OGHG EMISSION VARIABLES ----------
+$ifthen.oghg %climate% == 'witchoghg'
+* Oghg emissions starting point
+EOGHG.FX(oghg,tfirst,n)   =  oghg_emi_bau(oghg,tfirst,n);
+* OGHG-budget starts empty
+COGHGE.FX(oghg,tfirst)    = 0 ;
+$endif.oghg
 
 ##  CO2 MITIGATION UPPER BOUND SHAPE ----------
 loop(t,
@@ -182,8 +215,19 @@ MIU.up(t,n)$(t.val ge t_min_miu) = min_miu + (max_miu - min_miu) * (t.val - t_mi
 # After transition
 MIU.up(t,n)$(t.val gt t_max_miu) = max_miu;
 );
-MIU.up(t,n)$(t.pos le 2) = 0.03 ; #setting 2020 upperbound as in DICE2016
 
+##  OGHG MITIGATION UPPER BOUND SHAPE ----------
+$ifthen.oghg %climate% == 'witchoghg'
+loop(t,
+# before transition
+MIU_OGHG.up(oghg,t,n)$(t.val lt t_min_miu) = min_miuoghg;
+# transition: linear transition from min_miu to max_miu between t_min_miu and t_max_miu
+MIU_OGHG.up(oghg,t,n)$(t.val ge t_min_miu) = min_miuoghg + (max_miuoghg - min_miuoghg) * (t.val - t_min_miu)/(t_max_miu - t_min_miu);
+# after transition
+MIU_OGHG.up(oghg,t,n)$(t.val gt t_max_miu) = max_miuoghg;
+);
+MIU_OGHG.fx(oghg,tfirst,n) = 0 ; #setting 2015 value
+$endif.oghg
 
 
 #=========================================================================
@@ -203,8 +247,16 @@ $elseif.ph %phase%=='eql'
     eq_cco2etot
     eq_cumetree         # Cumulated land-use emissions
     eq_abatedemi        # Abated Emissions according to decision'
-    eq_miuinertiaplus   # Inertia in CO2 Control Rate decreasing'
-    eq_miuinertiaminus  # Inertia in CO2 Control Rate increasing'
+#    eq_miuinertiaplus   # Inertia in CO2 Control Rate decreasing'
+#    eq_miuinertiaminus  # Inertia in CO2 Control Rate increasing'
+##  OGHG EMISSION EQUATIONS ----------
+$ifthen.oghg %climate% == 'witchoghg'
+    eq_eoghg                 #'OGHG emissions equation'
+    eq_coghge                #'Cumulative OGHG emissions equation'
+    eq_abatedoghg            #'Abated OGHG Emissions according to MIU decision'
+    eq_oghg_miuinertiaplus   #'Inertia in OGHG Control Rate decreasing'
+    eq_oghg_miuinertiaminus  #'Inertia in OGHG Control Rate increasing'
+$endif.oghg
 
 
 ##  EQUATIONS
@@ -216,7 +268,7 @@ $elseif.ph %phase%=='eqs'
  eq_eind(t,n)$(reg(n))..   EIND(t,n)  =E=  sigma(t,n) * YGROSS(t,n) * (1-(MIU(t,n)))  ;
 
 * All emissions
- eq_e(t,n)$(reg(n))..   E(t,n)  =E=  EIND(t,n) + ELAND(t,n)  ;
+ eq_e(t,n)$(reg(n))..   E(t,n)  =E=  EIND(t,n) + ELAND(t,n);
 
 * Industrial cumulated emissions in Carbon
  eq_ccaeind(t+1)..   CCAEIND(t+1)  =E=  CCAEIND(t) # All industrial emi per period in Carbon
@@ -242,14 +294,35 @@ $elseif.ph %phase%=='eqs'
  eq_abatedemi(t,n)$(reg(n))..   ABATEDEMI(t,n)  =E=  MIU(t,n) * sigma(t,n) * YGROSS(t,n)  ;
 
 
+##  EMISSIONS OGHG ----------
+$ifthen.oghg %climate% == 'witchoghg'
+* OGHG emissions
+eq_eoghg(oghg,t,n)$(reg(n))..   EOGHG(oghg,t,n)  =E=  oghg_emi_bau(oghg,t,n)  * (1-(MIU_OGHG(oghg,t,n))) ;
+
+* OGHG cumulated emissions in CO2eq
+eq_coghge(oghg,t+1)..   COGHGE(oghg,t+1)  =E=  COGHGE(oghg,t) # All oghg-emi per period
+                                           + (( sum(n$reg(n), EOGHG(oghg,t,n)) + sum(n$(not reg(n)), EOGHG.l(oghg,t,n)) )* tstep) ; #CO2eq
+* OGHG Emissions abated
+eq_abatedoghg(oghg,t,n)$(reg(n))..   ABATEDOGHG(oghg,t,n)  =E=  MIU_OGHG(oghg,t,n) * oghg_emi_bau(oghg,t,n) ;
+$endif.oghg
+
 
 ##  MITIGATION CO2 INERTIA ----------
 * Inertia in increasing
-eq_miuinertiaminus(t+1,n)$(map_nt and (t.val gt 1))..   MIU(t+1,n)  =L=  MIU(t,n) + 0.20 ;
+#eq_miuinertiaminus(t+1,n)$(map_nt and (t.val gt 1))..   MIU(t+1,n)  =L=  MIU(t,n) + miu_inertia ;
 
 * Inertia in decreasing
-eq_miuinertiaplus(t+1,n)$(map_nt  and (t.val gt 1))..   MIU(t+1,n)  =G=  MIU(t,n) - 0.20 ;
+#eq_miuinertiaplus(t+1,n)$(map_nt  and (t.val gt 1))..   MIU(t+1,n)  =G=  MIU(t,n) - miu_inertia ;
 
+
+##  MITIGATION OGHG INERTIA ----------
+$ifthen.oghg %climate% == 'witchoghg'
+* Inertia in increasing
+eq_oghg_miuinertiaminus(oghg,t,n)$(reg(n)  and (t.val gt 1))..   MIU_OGHG(oghg,t,n)  =L=  MIU_OGHG(oghg,t-1,n) + 0.20  ;
+
+* Inertia in decreasing
+eq_oghg_miuinertiaplus(oghg,t,n)$(reg(n)  and (t.val gt 1))..   MIU_OGHG(oghg,t,n)  =G=  MIU_OGHG(oghg,t-1,n) - 0.50  ;
+$endif.oghg
 
 
 ##  FIX VARIABLES
@@ -262,77 +335,18 @@ tfixvar(MIU,'(t,n)')
 #_________________________________________________________________________
 $elseif.ph %phase%=='before_solve'
 
+$ontext
 loop((t,n)$(ctax(t,n) and (MIU.lo(t,n) lt MIU.up(t,n))),
     MIU.lo(t,n) = max(0, min(1 - (0.90*(YNET.l(t,n)-ABATECOST.l(t,n))/ctax(t,n) + EIND.l(t,n))/(sigma(t,n)*YGROSS.l(t,n)), MIU.up(t,n)));
     MIU.l(t,n) = (MIU.lo(t,n) + MIU.up(t,n))/2;
     EIND.l(t,n) = sigma(t,n)*YGROSS.l(t,n)*(1-MIU.l(t,n));
     ABATEDEMI.l(t,n) = sigma(t,n)*YGROSS.l(t,n)*MIU.l(t,n);
 );
-
+$offtext
 
 ##  PROBLEMATIC REGIONS
 #_________________________________________________________________________
 $elseif.ph %phase%=='problematic_regions'
-
-
-##  AFTER SOLVE
-#_________________________________________________________________________
-$elseif.ph %phase%=='after_solve'
-
-world_e(t)            = sum(n$(nsolve(n)),  E.l(t,n)  );
-
-display MIU.l, CCAEIND.l;
-
-#=========================================================================
-*   ///////////////////////     SIMULATION    ///////////////////////
-#=========================================================================
-
-##  SIMULATION SETUP
-#_________________________________________________________________________
-$elseif.ph %phase%=='set_simulation'
-
-
-
-##  SIMULATION HALFLOOP 1
-#_________________________________________________________________________
-$elseif.ph %phase%=='simulate_1'
-
-#  CO2 EMISSIONS ---------------------------------------
-
-* Industrial emissions
-EIND.l(t,n)  =  sigma(t,n) * YGROSS.l(t,n) * (1-(MIU.l(t,n))) ; #CO2
-
-* All emissions
-E.l(t,n)  =  EIND.l(t,n) + ELAND.l(t,n) ; #CO2
-
-* Industrial cumulated emissions in Carbon
-CCAEIND.l(t+1)  =  CCAEIND.l(t)  + ( sum(n, EIND.l(t,n)) * tstep * CO2toC ) ; #Carbon
-
-* Total cumulated emissions in Carbon
-CCAETOT.l(t+1)  =  CCAETOT.l(t)  + ( sum(n, E.l(t,n)) * tstep * CO2toC ) ; #Carbon
-
-* Land Use cumulated emissions in Carbon
-CUMETREE.l(t+1) =  CUMETREE.l(t) + (sum(n, ELAND.l(t,n)) * tstep * CO2toC) ; #Carbon
-
-* Industrial cumulated emissions in CO2
-CCO2EIND.l(t+1)  =  CCO2EIND.l(t) + ( sum(n, EIND.l(t,n))  * tstep ) ; #CO2
-
-* Total cumulated emissions in CO2
-CCO2ETOT.l(t+1)  =  CCO2ETOT.l(t) + ( sum(n, E.l(t,n))  * tstep ) ; #CO2
-
-* Emissions abated
-ABATEDEMI.l(t,n)  =  MIU.l(t,n) * sigma(t,n) * YGROSS.l(t,n)   ; #CO2
-
-
-
-##  SIMULATION HALFLOOP 2
-#_________________________________________________________________________
-$elseif.ph %phase%=='simulate_2'
-
-
-##  AFTER SIMULATION
-#_________________________________________________________________________
-$elseif.ph %phase%=='after_simulation'
 
 
 #===============================================================================
@@ -351,7 +365,6 @@ fosslim
 max_miu
 t_max_miu
 t_min_miu
-world_e
 CtoCO2
 CO2toC
 sigma
@@ -365,7 +378,7 @@ ABATEDEMI
 CCO2EIND
 CCO2ETOT
 
-# Equations (only for OPT. run_mode) -------------------
-$if %run_mode%=='optimization' eq_e
+# Equations -------------------
+eq_e
 
 $endif.ph

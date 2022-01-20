@@ -1,8 +1,8 @@
-* IMPACT DELL SUB-MODULE
-* DELL's damage function implemented according to model regional detail (n)
-*____________
+* IMPACT BURKE SUB-MODULE
+*
+* Burke's damage function implemented according to model regional detail
 * REFERENCES
-* - Dell et al. 2014
+* - Burke et al. 2015
 #=========================================================================
 *   ///////////////////////       SETTING      ///////////////////////
 #=========================================================================
@@ -10,9 +10,9 @@
 #_________________________________________________________________________
 $ifthen.ph %phase%=='conf'
 
-# RICH/POOR CUTOFF
-* | median | avg |
-$setglobal cutoff 'median'
+* Burke alternatives: | sr | lr | srdiff | lrdiff
+$setglobal bhm_spec 'sr'
+
 
 # OMEGA EQUATION DEFINITION
 * | simple | full |
@@ -24,17 +24,12 @@ $setglobal  omega_eq 'simple'
 $elseif.ph %phase%=='include_data'
 
 PARAMETERS
-    djo_rich   'rich DJO temperature coeff' / 0.00261/
-;
-
-PARAMETERS
-* Impact function coefficients
-    beta_djo(*, n, t)      'DJO local damage coefficient'
-* Rich/poor cutoff threshold
-    rich_poor_cutoff(t)    'Threshold differentiating rich from poor countries (GDPcap)'
-    rank(t,n)              'Income rank'
-    ykalipc_median(t)      'World median GDP per capita'
-    ykalipc_worldavg(t)    'World average GDP per capita'
+* Short run
+    kw_DT          / 0.00641  /
+    kw_DT_lag      / 0.00345  /
+    kw_TDT         / -.00105  /
+    kw_TDT_lag     / -.000718 /
+    kw_T           / -.00675  /
 ;
 
 
@@ -42,30 +37,14 @@ PARAMETERS
 #_________________________________________________________________________
 $elseif.ph %phase%=='compute_data'
 
-* This is ugly and slow ranking, but it works:
-rank(t,n) = sum(nn$((ykali(t,nn)*1e6/pop(t,nn)) gt (ykali(t,n)*1e6/pop(t,n))), 1) + 1;
+## MEDIAN CUTOFF EVALUATION ----------------------------
+#...........................................................................
+# Not trivial in GAMS,
+# ranking code inspired by solution here:
+# https://support.gams.com/gams:compute_the_median_of_a_parameter_s_values
+#...........................................................................
 
-* There could be a tie in median individuals.
-* To be safe, average through the number of median individuals:
-ykalipc_median(t) = sum(n$(rank(t,n) eq round(card(n)/2)), (ykali(t,n)*1e6/pop(t,n)))
-                  / sum(n$(rank(t,n) eq round(card(n)/2)), 1);
 
-* World Average could be an alternative cutoff threshold
-ykalipc_worldavg(t) = sum(n,(ykali(t,n)*1e6)) / sum(n,pop(t,n));
-
-$ifthen.coff %cutoff% == 'median'
-* Rich countries threshold: median
-rich_poor_cutoff(t) = ykalipc_median(t) ;
-$else.coff
-* Rich countries threshold: world AVG pro-capita GDP(t)
-rich_poor_cutoff(t) = ykalipc_worldavg(t) ;
-$endif.coff
-
-##  IMPACT COEFFICIENTS --------------------------------
-* Rich coeffs
-beta_djo('T',  n, t)$(((ykali('1',n)*1e6)/pop('1',n)) gt rich_poor_cutoff('1'))  =  0.00261;
-* Poor coeffs
-beta_djo('T',  n, t)$(((ykali('1',n)*1e6)/pop('1',n)) le rich_poor_cutoff('1'))  =  0.00261 - 0.01655;
 
 
 ##  DECLARE VARIABLES
@@ -73,18 +52,18 @@ beta_djo('T',  n, t)$(((ykali('1',n)*1e6)/pop('1',n)) le rich_poor_cutoff('1')) 
 $elseif.ph %phase%=='declare_vars'
 
 VARIABLES
-    DJOIMPACT(t,n)       'Impact coefficient according to DJO equation'
+    BIMPACT(t,n)             'Impact coefficient according to Burke equation'
     KOMEGA(t,n)              'Capital-Omega cross factor'
-    DAMFRAC_UNBOUNDED(t,n)   'Potential unbounded damages, as GDP Gross fraction [%GDPgross]: (+) damages (-) gains '
-    YNET_UNBOUNDED(t,n)      'Potential unbounded GDP, net of damages [Trill 2005 USD / year]'
-    YNET_UPBOUND(t,n)        'Potential GDP, net of damages, bounded in maximum gains [Trill 2005 USD / year]'
 ;
 KOMEGA.lo(t,n) = 0;
 
-# VARIABLES STARTING LEVELS ----------------------------
-KOMEGA.l(t,n) = 1 ;
-DJOIMPACT.l(t,n) = 0 ;
 
+# VARIABLES STARTING LEVELS ----------------------------
+BIMPACT.l(t,n) = 0 ;
+KOMEGA.l(t,n) = 1 ;
+
+#since requires lags fixed first period
+BIMPACT.fx('1',n) = 0 ;
 
 ##  COMPUTE VARIABLES
 #_________________________________________________________________________
@@ -92,7 +71,7 @@ $elseif.ph %phase%=='compute_vars'
 
 ##  STABILITY CONSTRAINTS ------------------------------
 * to avoid errors/help the solver to converge
-DJOIMPACT.lo(t,n) = (-1 + 1e-5) ; # needed because of eq_omega
+BIMPACT.lo(t,n) = (-1 + 1e-6) ; # needed because of eq_omega
 
 
 #=========================================================================
@@ -102,8 +81,9 @@ DJOIMPACT.lo(t,n) = (-1 + 1e-5) ; # needed because of eq_omega
 ##  EQUATION LIST
 #_________________________________________________________________________
 $elseif.ph %phase%=='eql'
-eq_omega      # Yearly impact equation 
-eq_djoimpact  # DJO tstep impact equation
+
+eq_bimpact   # BHM yearly impact equation
+eq_omega     # Impact over time equation
 $if %omega_eq% == 'full' eq_komega     # Capital-Omega impact factor equation (only for full-omega)
 
 
@@ -111,9 +91,13 @@ $if %omega_eq% == 'full' eq_komega     # Capital-Omega impact factor equation (o
 #_________________________________________________________________________
 $elseif.ph %phase%=='eqs'
 
-##  DJO'S IMPACT --------------------------------------
-* DJO's yearly local impact
- eq_djoimpact(t,n)$(reg(n))..  DJOIMPACT(t,n)  =E=  beta_djo('T',n,t) * (TEMP_REGION_DAM(t,n)-climate_region_coef('base_temp', n))  ;             
+##  BURKE'S IMPACT --------------------------------------
+* BHM's yearly local impact
+ eq_bimpact(t,n)$(reg(n) and ord(t) gt 1)..  BIMPACT(t,n)  =E=  (kw_DT+kw_DT_lag) * ((TEMP_REGION_DAM(t,n)-TEMP_REGION_DAM(t-1,n))/tlen(t))
+                                            +   (kw_TDT+kw_TDT_lag) * ((TEMP_REGION_DAM(t,n)-TEMP_REGION_DAM(t-1,n))/tlen(t)) * TEMP_REGION_DAM(t-1,n)
+#                                            -   (kw_DT+kw_DT_lag) * (TEMP_REGION_DAM(t,n)-TEMP_REGION_DAM(t-1,n))
+#                                            -   (kw_TDT+kw_TDT_lag) * (TEMP_REGION_DAM(t,n)-TEMP_REGION_DAM(t-1,n)) * TEMP_REGION_DAM(t-1,n)
+;
 
 # OMEGA FULL
 $ifthen.omg %omega_eq% == 'full'
@@ -126,14 +110,15 @@ $ifthen.omg %omega_eq% == 'full'
                                                                             #  Capital-Omega factor
                                                                             *  KOMEGA(t,n)
                                                                             #  BHM impact on pc-growth
-                                                                            /  ((1 + basegrowthcap(t,n) +  DJOIMPACT(t,n)   )**tstep)
+                                                                            /  ((1 + basegrowthcap(t,n) +  BIMPACT(t,n)   )**tstep)
                                                                         ) - 1  ;
+
 * Capital-Omega factor
  eq_komega(t,n)$(reg(n))..  KOMEGA(t,n)  =E=  ( (((1-dk)**tstep) * K(t,n)  +  tstep * S(t,n) * tfp(t,n) * (K(t,n)**gama) * ((pop(t,n)/1000)**(1-gama)) * (1/(1+OMEGA(t,n))) ) / K(t,n) )**gama  ;
 # OMEGA SIMPLE
 $else.omg
 * Omega-simple formulation
- eq_omega(t,n)$(reg(n)  and not tlast(t))..  OMEGA(t+1,n)  =E=  (  (1 + (OMEGA(t,n))) / ((1 + DJOIMPACT(t,n))**tstep)  ) - 1  ;
+ eq_omega(t,n)$(reg(n)  and not tlast(t))..  OMEGA(t+1,n)  =E=  (  (1 + (OMEGA(t,n))) / ((1 + BIMPACT(t,n))**tstep)  ) - 1  ;
 $endif.omg
 
 
@@ -141,19 +126,18 @@ $endif.omg
 *     ///////////////////////     REPORTING     ///////////////////////
 #===============================================================================
 
+##  REPORT
+#_________________________________________________________________________
+$elseif.ph %phase%=='report'
+
+
 ##  GDX ITEMS
 #_________________________________________________________________________
 $elseif.ph %phase%=='gdx_items'
 
-# Parameters -------------------------------------------
-rich_poor_cutoff
-ykalipc_median
-ykalipc_worldavg
-
 # Variables --------------------------------------------
-DJOIMPACT
+BIMPACT
 KOMEGA
 
 
 $endif.ph
-

@@ -5,6 +5,7 @@
 !.gitignore
 !README.md
 !CONTRIBUTING.md
+!*.gms
 
 # Whitelist subdirectory
 # trailing "/" is optional for folders, may match file though.
@@ -23,16 +24,7 @@ input/data/*
 !post/
 !tools/
 !tools/magicc
-!startboost.gms
-!run_rice50x.gms
-!modules.gms
-!algorithm.gms
-!CHANGELOG*
-!conopt*
-!LICENSE*
 tools/magicc/tmp/*
-input/time/time.inc
-!input/results_ssp2_bau_start.gdx
 
 #Calibrations
 input/calibrations/build
@@ -47,12 +39,10 @@ input/calibrations/temp
 .vscode
 rsconnect
 svn-commit.tmp
-*.gpr
 *.log
 *.lst
 *.lxi
 *.par
-*.Rproj
 *.tar.gz
 *.zip
 *.~gm
@@ -62,4 +52,10 @@ svn-commit.tmp
 .svn
 tools/python/*
 venv/
+*.gpr
+*.Rproj
+
 input/data/
+!run_policies.sh
+!conopt.opt
+!conopt4.opt

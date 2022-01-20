@@ -102,6 +102,7 @@ $elseif.ph %phase%=='gdx_items'
 t
 tstep
 tfix
+tlen
 
 # Parameters -------------------------------------------
 year

@@ -1,9 +1,10 @@
-* IMPACT DICE SUB-MODULE
-** A DICE2016-like impact is uniformly applied across all regions
+* IMPACT  SUB-MODULE
+** A Howard and Sterner-like impact is uniformly applied across all regions
+* based on preferred specification (4) in Table 2.
 *____________
 * REFERENCES
-* - Nordhaus, William. "Projections and Uncertainties about Climate Change in an Era of Minimal Climate Policies". 
-* American Economic Journal: Economic Policy 10, no. 3 (1 August 2018): 333–60. https://doi.org/10.1257/pol.20170046.
+* - Howard, Peter H., and Thomas Sterner. ‘Few and Not So Far Between: A Meta-Analysis of Climate Damage Estimates’. 
+* Environmental and Resource Economics 68, no. 1 (1 September 2017): 197–225. https://doi.org/10.1007/s10640-017-0166-z.
 #=========================================================================
 *   ///////////////////////       SETTING      ///////////////////////
 #=========================================================================
@@ -20,10 +21,14 @@ $elseif.ph %phase%=='include_data'
 PARAMETERS
 * DICE-2016 damage coefficient
    a1       'Damage intercept'                          / 0       /
-   a2       'Damage quadratic term'                     / 0.00236 /
+   a2       'Damage quadratic term'                     / 0.595   /
    a3       'Damage exponent'                           / 2.00    /
 ;
 
+#add 25% to the coefficient for accountign for catastrophic damages
+a2 = a2 * 1.25;
+#convert to percentages 
+a2 = a2 / 100;
 
 ##  DECLARE VARIABLES
 #_________________________________________________________________________

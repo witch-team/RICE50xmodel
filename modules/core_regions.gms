@@ -29,7 +29,7 @@ alias(n,nn,nnn,nnnn);
 * Subset regulating how many countries to solve
 * (according to the debug flag presence)
 set nsolve(n)   'Which regions must be solved across n set';
-$if set debug nsolve(n) = yes$(sameas(n,'%debug_region%'));
+$if set debug nsolve(n) = yes$(sameas(n,'%debug%'));
 $if not set debug nsolve(n) = yes;
 
 * no limits for the moment
@@ -47,34 +47,6 @@ SETS
                                                         sigmoid_LLs  /
     trns_end  "year of convergence to DICE"        / 28, 38, 48, 58 /
 ;
-
-
-$ifthen %n%=="ed57"
-SET eu27(n) "European Union members" /
-aut  # Austria
-bel  # Belgium
-bgr  # Bulgaria
-cro  # Croatia
-dnk  # Denmark
-esp  # Spain
-fin  # Finland
-fra  # France
-grc  # Greece
-hun  # Hungary
-irl  # Ireland
-ita  # Italy
-nld  # Netherlands
-pol  # Poland
-prt  # Portugal
-rcz  # Czech Republic
-rfa  # Germany
-rom  # Romania
-rsl  # Slovakia
-slo  # Slovenia
-swe  # Sweden
-blt  # Baltic states: Finland, Estonia, Latvia
-/;
-$endif
 
 
 #===============================================================================

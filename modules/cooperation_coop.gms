@@ -1,4 +1,5 @@
-* COOPERATION COOP
+* COOPERATION COALITIONS
+* Define coalitions mappings
 #=========================================================================
 *   ///////////////////////       SETTING      ///////////////////////
 #=========================================================================
@@ -7,26 +8,19 @@
 #_________________________________________________________________________
 $ifthen.ph %phase%=='conf'
 
+* REGION WEIGHTS
+* | negishi | pop |
+$setglobal region_weights 'pop'
+
 $setglobal solmode 'coop'
 
 $setglobal coalitions_t_sequence 1
 
-$if set debug $if set debug_region $setglobal solmode 'noncoop'
-
 ## REGION WEIGHTS
-* Force correct setting for noncoop and disentangled mode
-$setglobal region_weights '%weighting%'
-$if %disentangled%==1         $setglobal region_weights 'pop'
+$if %region_weights% == 'negishi' $setglobal calc_nweights ((CPC.l(t,n)**elasmu)/sum(nn, (CPC.l(t,nn)**(elasmu))))
 
-* Negishi weights
-$iftheni.rw  %weighting% == 'negishi'
-$setglobal calc_nweights ((CPC.l(t,n)**elasmu)/sum(nn, (CPC.l(t,nn)**(elasmu))))
-$setglobal region_weights 'ngsw'
-$else.rw
 * Population weights
-$setglobal calc_nweights 1
-$setglobal region_weights 'pop'
-$endif.rw
+$if %region_weights% == 'pop' $setglobal calc_nweights 1
 
 
 ## SETS
@@ -34,17 +28,27 @@ $endif.rw
 $elseif.ph %phase%=='sets'
 
 SET clt "List of all possibly-applied coalitions" /
-$include %datapath%n.inc
+*$include %datapath%n.inc
+grand
 /;
+
+SET map_clt_n(clt,n) "Mapping set between coalitions and belonging regions";
+map_clt_n('grand',n) = yes;
 
 # Control set for active coalitions
 SET cltsolve(clt);
-* Initialized to no 
-cltsolve(clt) = yes;
+* Initialized to no
+cltsolve('grand') = yes;
 
-# MACRO mapping between coalitions and belonging regions
-$macro mapclt(n)    sameas(&clt,n)
-$macro mapcclt(nn)  sameas(&clt,nn)
+#===============================================================================
+*     ///////////////////////     REPORTING     ///////////////////////
+#===============================================================================
 
+##  GDX ITEMS
+#_________________________________________________________________________
+$elseif.ph %phase%=='gdx_items'
+
+clt
+map_clt_n
 
 $endif.ph

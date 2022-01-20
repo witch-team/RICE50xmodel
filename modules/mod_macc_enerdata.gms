@@ -56,7 +56,8 @@ $setglobal klogistic 0.25
 #.......................
 
 
-* MACC fitting model [polinomial 1-4]
+# MACC SHAPE
+* MACC fitting model | cstay14fit [polinomial 1-4] |
 $setglobal maccfit "poly14fit"
 
 
@@ -138,6 +139,14 @@ $load  macc_%maccfit%_enerdata_CO2    = abat_coef_enerdata_%maccfit%
 $gdxin
 
 
+* OGHG MAC-Curves fitting parameters
+$ifthen.oghg %climate% == 'witchoghg'
+PARAMETER  macc_fitcoef_enerdata_OGHG(sector,coef,t,n)  'EnerData OGHG MACC fit for given years (2025-2040)'  ;
+$gdxin '%datapath%data_macc_enerdata_OGHG'
+$load  macc_fitcoef_enerdata_OGHG = abat_coef_enerdata
+$gdxin
+$endif.oghg
+
 
 ##  PARAMETERS EVALUATED -------------------------------
 
@@ -149,6 +158,8 @@ PARAMETERS
 * MACC fit coefficients
     ax_co2(*,sector,t,n)    "EnerData < a > %maccfit%-coeff for MACC"
     bx_co2(*,sector,t,n)    "EnerData < b > %maccfit%-coeff for MACC"
+    a_oghg(sector,t,n)      "EnerData < a > fit-coeff for MACC"
+    b_oghg(sector,t,n)      "EnerData < b > fit-coeff for MACC"
 * MACC transition
     mx(t,n)                 "Enerdata MACC multiplier calibated on diagnostics"
     alpha(t)                "Transition to backstop coefficient"
@@ -174,6 +185,12 @@ $elseif.ph %phase%=='compute_data'
 
 ax_co2('%maccfit%','Total_CO2',t,n)    = macc_%maccfit%_enerdata_CO2('Total_CO2', 'a', t, n);
 bx_co2('%maccfit%','Total_CO2',t,n)    = macc_%maccfit%_enerdata_CO2('Total_CO2', 'b', t, n);
+
+
+$ifthen.oghg %climate% == 'witchoghg'
+a_oghg(sector,t,n)     = macc_fitcoef_enerdata_OGHG(  sector  , 'a', t, n);
+b_oghg(sector,t,n)     = macc_fitcoef_enerdata_OGHG(  sector  , 'b', t, n);
+$endif.oghg
 
 
 #  PBackstop curve -------------------------------------
@@ -233,12 +250,14 @@ VARIABLES
 * Abatement costs
     ABATECOST_ED(t,n) 'Cost of emissions reductions according to EnerData MACC  [Trill 2005 USD / year]'
     ABATECOST_PB(t,n) 'Cost of emissions reductions according to PBackstop MACC [Trill 2005 USD / year]'
+    ABATECOST_OGHG(oghg,t,n)    'Cost of oghg emissions reductions [Trill 2005 USD / year]'
 * CPrices
     CPRICE_ED(t,n)    'Carbon price according to EnerData MACC [ 2005 USD / tCO2 ]'
     CPRICE_PB(t,n)    'Carbon price according to backstop [ 2005 USD / tCO2 ]'
 ;
-POSITIVE VARIABLES ABATECOST_ED, ABATECOST_PB, CPRICE_ED, CPRICE_PB;
+POSITIVE VARIABLES ABATECOST_ED, ABATECOST_PB, ABATECOST_OGHG, CPRICE_ED, CPRICE_PB;
 
+CPRICE_ED.l(t,n) = 0 ;
 
 
 
@@ -247,7 +266,6 @@ POSITIVE VARIABLES ABATECOST_ED, ABATECOST_PB, CPRICE_ED, CPRICE_PB;
 * In the phase COMPUTE_VARS, you fix starting points and bounds.
 * DO NOT put VAR.l here! (use the declare_vars phase)
 $elseif.ph %phase%=='compute_vars'
-
 
 
 #=========================================================================
@@ -269,6 +287,9 @@ $elseif.ph %phase%=='eql'
     eq_cprice_ed          #'Carbon price equation according to enerdata macc'
     eq_cprice_pb          #'Carbon price equation according to pbackstop'
 
+$if %climate% == 'witchoghg'  eq_abatecost_oghg   # Cost of oghg emissions reductions equation
+
+
 
 
 ##  EQUATIONS
@@ -277,6 +298,7 @@ $elseif.ph %phase%=='eql'
 * The equations are always included.
 * Best practice : - condition your equation to be able to do a run with t_fix(t)
 $elseif.ph %phase%=='eqs'
+
 
 
 # ABATEMENT COSTS AND CPRICE FROM PBACKSTOP ------------
@@ -288,7 +310,12 @@ eq_cprice_pb(t,n)$(reg(n)).. CPRICE_PB(t,n)  =E=  pbacktime(t) * (MIU(t,n))**(ex
 
 
 
+
 # ABATE COSTS AND CPRICE FROM ENERDATA CO2 MACCs  ------
+
+
+* According to fitting procedure adopted, there is a different
+* equation to implement..
 
 * y ~ ax + bx^4   --with multiplier-->   y ~ mx (ax + bx^4)
 * with constraints (R-colf optim package) avoiding negative costs
@@ -305,6 +332,8 @@ eq_abate_ed(t,n)$(reg(n))..
                               /   1000
 ;                             # >> Costs will result in [Trill USD]
 
+
+
 * Carbon Price ::   y ~ mx (ax + bx^4)
 eq_cprice_ed(t,n)$(reg(n))..
                               #   Correction coefficient
@@ -315,89 +344,32 @@ eq_cprice_ed(t,n)$(reg(n))..
 
 
 
+
+
+
+* :::::  ABATE COSTS AND CPRICE FROM ENERDATA OGHG MACCs  ::::: *
+
+
+** OGHG ABATECOSTS
+$ifthen.oghg %climate% == 'witchoghg'
+ eq_abatecost_oghg(oghg,sector,t,n)$(reg(n) and  map_sector_ghg(sector,oghg))..
+                                  # Powerfit Abatement Cost:  [ USD/tCO2eq_max_abat ] :  a (MIU^(b+1)) / (b+1)
+   ABATECOST_OGHG(oghg,t,n)  =E=  ED_a_oghg(sector,t,n)*(MIU_OGHG(oghg,t,n)**(ED_b_oghg(sector,t,n) +1)) / (ED_b_oghg(sector,t,n) +1)
+                                  # Baseline emissions   [ GtCo2eq ]
+                              *   oghg_emi_bau(oghg,t,n)
+                                  # Coversion result     [ G$/1000 = Trill$ ]
+                              /   1000   ;
+
+$endif.oghg
+
+
+
+
 #  FINAL ABATECOSTS AND CPRICE --------------------
 
 eq_abatecost(t,n)$(reg(n)).. ABATECOST(t,n)  =E=  ABATECOST_ED(t,n)  ;
 
 eq_cprice(t,n)$(reg(n)).. CPRICE(t,n)  =E=  CPRICE_ED(t,n)  ;
-
-
-
-#=========================================================================
-*   ///////////////////////     SIMULATION    ///////////////////////
-#=========================================================================
-
-##  SIMULATION SETUP
-#_________________________________________________________________________
-* In this phase you have either to fix free variables or to declare useful
-* parameters for the simulation loop.
-* You are NOT inside a loop(t,..) at this stage.
-$elseif.ph %phase%=='set_simulation'
-
-
-##  SIMULATION HALFLOOP 1
-#_________________________________________________________________________
-* In the phase SIM1, you have to replicate all equations but keeping VAR.l instead
-* of the pure variable and '=' instead =E=.
-* Consider that you ARE inside a loop(t, ..),therefore NOTHING can be declared as new
-$elseif.ph %phase%=='simulate_1'
-
-
-# ABATEMENT COSTS AND CPRICE FROM PBACKSTOP ------------
-
-          ABATECOST_PB.l(t,n)  =  YGROSS.l(t,n) * cost1(t,n) * (MIU.l(t,n)**expcost2)  ;
-
-
-             CPRICE_PB.l(t,n)  =  pbacktime(t) * (MIU.l(t,n))**(expcost2-1)   ;
-
-
-
-# ABATE COSTS AND CPRICE FROM ENERDATA CO2 MACCs  ------
-
-* y ~ ax + bx^4   --with multiplier-->   y ~ mx (ax + bx^4)
-* with constraints (R-colf optim package) avoiding negative costs
-
-* Abatement Cost ::   mx * (a(x^2)/2 + b(x^5)/5) * bau   :: [$/tCO2]x[GtCO2] ->  [ G$ ]
-                              #   Correction coefficient
-         ABATECOST_ED.l(t,n)  =  mx(t,n)
-                              #   Tay14 integral
-                              *   ((ax_co2('%maccfit%','Total_CO2',t,n)*power(MIU.l(t,n),2)/2)  +  (bx_co2('%maccfit%','Total_CO2',t,n)*power(MIU.l(t,n),5)/5))
-                              #   Baseline emissions (due to miu-based integral) [GtCO2]
-                              *   emi_bau_co2(t,n)
-                              #   Coversion:  [ G$ ] / 1000 -> [Trill $]
-                              /   1000
-;                             # >> Costs will result in [Trill USD]
-
-
-* Carbon Price ::   y ~ mx (ax + bx^4)
-                              #   Correction coefficient
-            CPRICE_ED.l(t,n)  =   mx(t,n)
-                              #   Taylor14 formulation
-                              *   ((ax_co2('%maccfit%','Total_CO2',t,n)*MIU.l(t,n)) + (bx_co2('%maccfit%','Total_CO2',t,n)*power(MIU.l(t,n),4)))
-;                             # >> CPrice will result in [$/tCO2] by construction
-
-
-# FINAL ABATECOSTS AND CPRICE --------------------------
- 
- ABATECOST.l(t,n)  =  ABATECOST_ED.l(t,n)  ;
-
- CPRICE.l(t,n)  =  CPRICE_ED.l(t,n) ;
-
-
-
-##  SIMULATION HALFLOOP 2
-#_________________________________________________________________________
-* In the phase SIM2, you have to replicate all equations but keeping VAR.l instead
-* of the pure variable and '=' instead =E=.
-* Everything declared at halfloop1 has already been executed.
-* Consider that you ARE inside a loop(t, ..),therefore NOTHING can be declared as new
-$elseif.ph %phase%=='simulate_2'
-
-
-##  AFTER SIMULATION
-#_________________________________________________________________________
-* In this phase you are OUTSIDE the loop(t,..), at the end of the simulation process.
-$elseif.ph %phase%=='after_simulation'
 
 
 #===============================================================================
