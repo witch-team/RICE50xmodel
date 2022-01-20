@@ -1,4 +1,4 @@
-$if not "%1"=="1" $abort "Starting time in [coalition_t_sequence] is not -1- (as it should be!)"
+$if not "%1"=="1" $abort "Not set starting-time <t=1> in coalitions_t_sequence"
 
 # Generate equations list 
 EQUATIONS
@@ -67,12 +67,6 @@ $if set debug option AsyncSolLst = 1;
 ##  LAUNCH SOLVER
 #_________________________________________________________________________
 $batinclude "algorithm/solve_regions"
-
-* if errived here solve was successful
-* Store result as gdxfix in temp folder
-$if set gdxfix execute_unload "%gdxfix%.gdx"
-* In debug-mode save all intermediate-coalition results
-$if set debug $if set gdxfix execute_unload "%gdxfix%_%1.gdx"
 
 $shift
 $goto loop0

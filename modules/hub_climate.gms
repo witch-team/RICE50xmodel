@@ -1,5 +1,5 @@
-* HUB CLIMATE 
-* ----------------------
+* CLIMATE MODULE
+*
 * This module gathers all main climate parameters, variables and sets.
 * Those will be mapped with specific climate submodules varibles.
 
@@ -8,11 +8,21 @@
 #=========================================================================
 ##  CONF
 #_________________________________________________________________________
+* Definition of the global flags and settings specific to the module 
 $ifthen.ph %phase%=='conf'
 
-* Climate module to add
-* | DICE2016 | cbsimple | witchco2 |
+
+##  SETTING CONF ---------------------------------------
+
+* CLIMATE MODULE
+* | DICE2016 | cbsimple | witchco2 | witchoghg |
 $setglobal climate 'witchco2'
+$if %policy%==simulation_tatm_exogen $setglobal climate 'tatm_exogen'
+$if %policy%==simulation_climate_regional_exogen $setglobal climate 'tatm_exogen'
+
+##  CALIBRATED CONF ------------------------------------
+# These settings shouldn't be changed
+
 * Default options
 $setglobal default_climate 'witchco2'
 
@@ -26,6 +36,7 @@ $elseif.ph %phase%=='sets'
 #_________________________________________________________________________
 $elseif.ph %phase%=='include_data'
 
+##  PARAMETERS HARDCODED OR ASSIGNED ------------------- 
 PARAMETERS
    tatm0    'Initial Atmospheric Temperature change [degree C from 1900]'   /0.85 / #DICE2013: 0.80    #DICE2016: 0.85
    tocean0  'Initial Lower Stratum Temperature change [degree C from 1900]' /.0068/ #DICE2013: 0.0068  #DICE2016: 0.0068
@@ -48,7 +59,6 @@ VARIABLES
 ;
 
 # VARIABLES STARTING LEVELS 
-* to help convergence if no startboost is loaded
   TATM.l(t) = tatm0   ; 
 TOCEAN.l(t) = tocean0 ; 
 
@@ -105,5 +115,5 @@ $endif.ph
 #===============================================================================
 
 * Include the climate full logic (selected as global option)
-* Alternatives: | DICE2016 | cbsimple | witchco2 |
+* Alternatives: | DICE2016 | cbsimple | witchco2 | witchoghg |
 $batinclude 'modules/mod_climate_%climate%'  %1

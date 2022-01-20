@@ -1,11 +1,9 @@
 * MODULE LAND USE
 * To assess how much emissions are coming from Land Use.
 * Temporarily based on a distributed version of DICE2016 process.
-
 #=========================================================================
 *   ///////////////////////       SETTING      ///////////////////////
 #=========================================================================
-
 ##  CONF
 #_________________________________________________________________________
 $ifthen.ph %phase%=='conf'
@@ -80,11 +78,10 @@ VARIABLES    ELAND(t,n)     'Land-use emissions   [GtCO2/year]';
 #_________________________________________________________________________
 $elseif.ph %phase%=='compute_vars'
 
-
-$ifthen.lu set bau_no_impacts
+$ifthen.lu '%policy%'=='bau'
 # For BAU scenario take the DICE-like baselines (pessimistic)
 ELAND.fx(t,n)  =  eland_bau('uniform',t,n)  ;
-$elseif.lu '%policy%'=='bau-impacts'
+$elseif.lu '%policy%'=='bau_impact'
 # For BAU-IMPACTS scenario take the DICE-like baselines (pessimistic)
 ELAND.fx(t,n)  =  eland_bau('uniform',t,n)  ;
 $else.lu
@@ -101,10 +98,11 @@ $endif.lu
 #_________________________________________________________________________
 $elseif.ph %phase%=='gdx_items'
 
-# Parameters 
+# Parameters -------------------------------------------
 eland0
 deland
-# Variables
+
+# Variables --------------------------------------------
 ELAND
 
 

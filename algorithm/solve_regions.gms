@@ -19,21 +19,13 @@ $if not set solvermode $setglobal solvermode nlp
 * continue looping unless "converged" becomes 1
 * If max_iterations number is reached, an abort command will interrupt the loop
 
-loop( iter$(not converged),
+loop(iter$(not converged),
 
 * Reset collection loop
 clt_problem(clt) = no;
 timer = TimeElapsed;
 
 $batinclude "modules" "before_solve"
-
-
-
-*===============================================================================
-*                           NON COOPERATION CASE
-*===============================================================================
-* Here regions are solved in parallel on different solvelinks.
-$ifthen.nc %solmode%=='noncoop'
 
 
 CO2.solvelink = %solvelink%; # Solving optios
@@ -45,8 +37,9 @@ CO2.solvelink = %solvelink%; # Solving optios
 ** SUBMISSION LOOP
 *..................................................
 * Step 1: every coalition evaluates its best alone-solution
+$if set debug cltsolve(clt) = no; cltsolve('%debug%') = yes;
 loop(clt$(cltsolve(clt)), # only active coalitions
-    reg(nn) = yes$(mapcclt(nn));  # Set <reg> to one single region per loop and then
+    reg(nn) = yes$map_clt_n(clt,nn);  # Set <reg> to one single region per loop and then
                                       # solve the model (every equation constrained by reg(n)
                                       # is executed only for reg-current regions )
     solve CO2 maximizing UTILITY using %solvermode%;
@@ -107,7 +100,7 @@ repeat
 
 
                     # Set solving region to problematic one
-                    reg(nn) = yes$(mapcclt(nn));
+                    reg(nn) = yes$map_clt_n(clt,nn);
 
                     # Inform the model that we are in this phase
                     # (some ad-hoc changes may help in best managing the situation)
@@ -118,9 +111,6 @@ $batinclude "modules" 'problematic_regions'
                     h(clt) = CO2.handle;  # Model-attribute <handle> contains an unique identification for each submitted
                                         # solution. In this way i notify the <handlecollect(h)> of the inner loop i've
                                         # finished my serial solving.
-
-
-
 
 
                 # Aaargh! Some coalition has run out of its allowed serial attempts!
@@ -166,9 +156,10 @@ abort$(card(h) gt 0) 'ERROR: TIME OUT, %max_seconds% seconds elapsed and not all
 
 * Re-run problematic regions (if any) serially
 if(card(clt_problem) gt 0,
+    display clt_problem;
     CO2.solvelink = %solveLink.loadLibrary%;
     loop(clt_problem(clt),
-        reg(nn) = yes$(mapcclt(nn));
+        reg(nn) = yes$map_clt_n(clt,nn);
         solve CO2 maximizing UTILITY using %solvermode%;
     );
     CO2.solvelink = %solvelink%;
@@ -177,40 +168,6 @@ if(card(clt_problem) gt 0,
     execute_unload 'debug_infeas.gdx';
     abort 'ERROR: regions unable to be solved to optimality';
 );
-
-
-
-
-
-
-
-
-
-
-
-*===============================================================================
-*                      COOPERATION CASE
-*===============================================================================
-* simply solve everything serially for the best shared utility
-$else.nc
-
-
-reg(n)$(nsolve(n)) = yes;
-solve CO2 maximizing UTILITY using %solvermode%;
-### solrep(iter,nsolve) = yes;
-solrep(iter,nsolve,'ok') = yes$(not ((CO2.solvestat gt 1) or (CO2.modelstat gt 2))); # MODEL REPORT.
-                                                            # modelstat = 1 or 2 is optimal or locally opt
-                                                            # modelstat > 2 has infasibilities
-                                  # solvestat = 1 is ok.
-                                  # solvestat > 1 indicates some different problems
-
-
-$endif.nc
-
-
-
-
-
 
 
 
@@ -231,9 +188,10 @@ viter(iter,'MIU',t,n)$nsolve(n) = MIU.l(t,n);  # Keep track of last mitigation v
 
 * Evaluate distance measure for convergence
 * max_solution_change among all regions and all times between eiter(i,..) and eiter(i-1,..)
-max_solution_change$(ord(iter) > 1) = smax((v,t,n)$nsolve(n), abs(viter(iter,v,t,n)-viter(iter-1,v,t,n)));
+max_solution_change$(ord(iter) > 1) = smax((v,t,n)$nsolve(n), abs(viter(iter,v,t,n)-viter(iter-1,v,t,n))) ;
+$if %policy%=='cbudget' $if %cooperation%=='noncoop' max_solution_change$(ord(iter) > 1) = max(smax((v,t,n)$nsolve(n), abs(viter(iter,v,t,n)-viter(iter-1,v,t,n))),abs(cbudget_2019_2100-ctax_target_rhs)*%convergence_tolerance%/%conv_budget%) ; 
 max_solution_change_iter(iter) = max_solution_change;
-display max_solution_change;
+*display max_solution_change;
 
 
 
@@ -242,11 +200,8 @@ display max_solution_change;
 * CONVERGENCE TOLERANCE could be set!
 converged$((sum(cltsolve, solrep(iter,cltsolve,'ok')) eq card(cltsolve)) and (max_solution_change lt %convergence_tolerance%) and (iter.pos gt %miniter%)) = 1;
 
-
-
-
 ** Weights may change AFTER FIRST ITERATION
-$if not set disentangled $if %solmode%=='coop' nweights(t,n)$((not converged)) = %calc_nweights%; display nweights;
+$if %region_weights% == 'negishi' nweights(t,n)$((not converged)) = %calc_nweights%;
 
 
 
@@ -256,25 +211,10 @@ $batinclude "modules" "after_solve"
 
 
 * For every iteration dump current situation (even if not converged)
-$if set gdxtemp put_utility 'gdxout' / 'all_data_temp_' iter.tl:0 '.gdx' ; execute_unload;
-
-
-
+$if set all_data_temp put_utility 'gdxout' / 'all_data_temp_%nameout%.gdx' ; execute_unload;
 
 );
 # end of main-loop
-# ///////////////////////////////////
-
-
-
-
-
-
-
-
-
-
-
 
 ** FAILURE
 *........................................................................

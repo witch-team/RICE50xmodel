@@ -10,18 +10,19 @@
 #_________________________________________________________________________
 $ifthen.ph %phase%=='conf'
 
+* Burke alternatives: | sr | lr | srdiff | lrdiff
+$setglobal bhm_spec 'sr'
+
 # RICH/POOR CUTOFF
 * | median | avg |
 $setglobal cutoff 'median'
 
 # OMEGA EQUATION DEFINITION
 * | simple | full |
-$setglobal  omega_eq 'full'
-* if savings are free, simgplified omega_eq is needed 
-$if not %savings%=="fixed" $setglobal  omega_eq 'simple'
-$if not %savings%=="fixed" $if not %omega_eq%=='simple' $abort "Simple Omega equation has to be set under free savings option!"
+$setglobal  omega_eq 'simple'
 
-
+* Damages in the optimization ('' using the endogenous variable) or post-processed ('.l' using the level in the equation)
+$setglobal dam_endo '' #'.l'
 
 ## INCLUDE DATA
 #_________________________________________________________________________
@@ -57,9 +58,6 @@ PARAMETERS
     rank(t,n)               'Income GDP per-capita rank'
     ykalicap_median(t)      'World median GDP per capita'
     ykalicap_worldavg(t)    'World average GDP per capita'
-* Calibrated safety bounds of climate change effect
-    ynet_maximum(t,n)       'Maximum allowed gains from climate change'
-    ynet_minimum(t,n)       'Maximum allowed damages from climate change'
 ;
 
 
@@ -130,35 +128,21 @@ beta_bhm('T',  n, t)$(((ykali(t,n)*1e6)/pop(t,n)) le rich_poor_cutoff(t))  =  bh
 beta_bhm('T2', n, t)$(((ykali(t,n)*1e6)/pop(t,n)) le rich_poor_cutoff(t))  =  bhm_LRdiff_poor_T2  ;
 $endif.bhm
 
-# DAMAGES CAP LEVELS -----------------------------------
-* Maximum and minimum reachable values (compared to baseline SSP GDP level)
- ynet_maximum(t,n) =   %max_gain%   * ykali(t,n) ;
- ynet_minimum(t,n) =   %max_damage% * ykali(t,n) ;
-
 
 ##  DECLARE VARIABLES
 #_________________________________________________________________________
 $elseif.ph %phase%=='declare_vars'
 
 VARIABLES
-    BIMPACT(t,n)         'Impact coefficient according to Burke equation'
-    OMEGA(t,n)           'Economic Burke impact from Climate Change [% of GDP]'
-    KOMEGA(t,n)          'Capital-Omega cross factor'
-    DAMFRAC_UNBOUNDED(t,n)   'Potential unbounded damages, as GDP Gross fraction [%GDPgross]: (+) damages (-) gains '
-    YNET_UNBOUNDED(t,n)      'Potential unbounded GDP, net of damages [Trill 2005 USD / year]'
-    YNET_UPBOUND(t,n)        'Potential GDP, net of damages, bounded in maximum gains [Trill 2005 USD / year]'
+    BIMPACT(t,n)             'Impact coefficient according to Burke equation'
+    KOMEGA(t,n)              'Capital-Omega cross factor'
 ;
-POSITIVE VARIABLE KOMEGA;
+KOMEGA.lo(t,n) = 0;
 
 
 # VARIABLES STARTING LEVELS ----------------------------
-* to help convergence if no startboost is loaded
-OMEGA.l(t,n) = 0 ;
 BIMPACT.l(t,n) = 0 ;
 KOMEGA.l(t,n) = 1 ;
-DAMFRAC_UNBOUNDED.l(t,n) = 0 ;
-YNET_UNBOUNDED.l(t,n) = ykali(t,n) ;
-YNET_UPBOUND.l(t,n) = ykali(t,n)  ;
 
 
 ##  COMPUTE VARIABLES
@@ -167,19 +151,7 @@ $elseif.ph %phase%=='compute_vars'
 
 ##  STABILITY CONSTRAINTS ------------------------------
 * to avoid errors/help the solver to converge
-  OMEGA.lo(t,n) = (-1 + 1e-6) ; # needed because of eq_komega [not > 1e-3!]
 BIMPACT.lo(t,n) = (-1 + 1e-6) ; # needed because of eq_omega 
-
-* Tolerance for min/max nlp smooting
-SCALAR   delta  /1e-2/ ; #-14 more than 1e-8 get solver stucked
-
-# NOTE ...........................................
-# Don't limit YNET_* variables
-# The bounding logic already limits the interval
-#.................................................
-
-##  CONTROL RATE LIMITS --------------------------------
-OMEGA.fx(tfirst,n)   = 0    ;
 
 
 #=========================================================================
@@ -193,9 +165,6 @@ $elseif.ph %phase%=='eql'
 eq_bimpact   # BHM yearly impact equation
 eq_omega     # Impact over time equation
 $if %omega_eq% == 'full' eq_komega     # Capital-Omega impact factor equation (only for full-omega)
-eq_damfrac_nobnd
-eq_ynet_nobnd
-eq_ynet_upbnd
 
 
 ##  EQUATIONS
@@ -204,8 +173,8 @@ $elseif.ph %phase%=='eqs'
 
 ##  BURKE'S IMPACT --------------------------------------
 * BHM's yearly local impact
- eq_bimpact(t,n)$(reg(n))..  BIMPACT(t,n)  =E=  beta_bhm('T', n, t) * TEMP_REGION_DAM(t,n)
-                                            +   beta_bhm('T2', n, t)* power(TEMP_REGION_DAM(t,n),2)
+ eq_bimpact(t,n)$(reg(n))..  BIMPACT(t,n)  =E=  beta_bhm('T', n, t) * TEMP_REGION_DAM%dam_endo%(t,n)
+                                            +   beta_bhm('T2', n, t)* power(TEMP_REGION_DAM%dam_endo%(t,n),2)
                                             -   beta_bhm('T', n, t) * climate_region_coef('base_temp', n)
                                             -   beta_bhm('T2', n, t)* power(climate_region_coef('base_temp', n),2) ;
 
@@ -230,90 +199,6 @@ $else.omg
 * Omega-simple formulation
  eq_omega(t,n)$(reg(n)  and not tlast(t))..  OMEGA(t+1,n)  =E=  (  (1 + (OMEGA(t,n))) / ((1 + BIMPACT(t,n))**tstep)  ) - 1  ;
 $endif.omg
-
-##  ESTIMATED YNET AND DAMAGES -------------------------
-* Unbounded Damfrac
- eq_damfrac_nobnd(t,n)$(reg(n))..   DAMFRAC_UNBOUNDED(t,n)  =E=   1 - ( 1/(1+OMEGA(t,n)) )  ;
-* Unbounded YNET esteem
- eq_ynet_nobnd(t,n)$(reg(n))..   YNET_UNBOUNDED(t,n)  =E=  YGROSS(t,n) * (1 - DAMFRAC_UNBOUNDED(t,n))  ;
-* Gains upperbound 
- eq_ynet_upbnd(t,n)$(reg(n))..   
-   YNET_UPBOUND(t,n)  =E=  ( YNET_UNBOUNDED(t,n) + ynet_maximum(t,n) - Sqrt( Sqr(YNET_UNBOUNDED(t,n)-ynet_maximum(t,n)) + Sqr(delta) ) )/2  ;
-
-* Damages lowerbound and final YNET estimated
- eq_ynet_estim(t,n)$(reg(n))..  
-   YNET_ESTIMATED(t,n)  =E=  ( YNET_UPBOUND(t,n) + ynet_minimum(t,n) + Sqrt( Sqr(YNET_UPBOUND(t,n)-ynet_minimum(t,n)) + Sqr(delta) ) )/2  ;
-
-    #................................................................................
-    # UPPER BOUND ->  fix maximum YNET level -> min( YNET_UNBOUNDED, ynet_maximum )
-    # LOWER BOUND ->  fix minimum YNET level -> max( YNET_UNBOUNDED, ynet_minimum )
-    #
-    # A smooth GAMS approximation for  min(f(x),g(y))  is:
-    #    ( f(x) + g(y) - Sqrt( Sqr( f(x)-g(y) ) + Sqr(delta) ) )/2
-    #
-    # A smooth GAMS approximation for  max(f(x),g(y))  is:
-    #   ( a(x) + b(y) + Sqrt( Sqr(a(x)-b(y)) + Sqr(delta) ) )/2
-    #................................................................................
-
-##  EFFECTIVE DAMAGES ----------------------------------
-* Effective net Damages
-eq_damages(t,n)$(reg(n))..   DAMAGES(t,n)  =E=  (YGROSS(t,n) - YNET_ESTIMATED(t,n)) ;
-* Effective Damages as fraction of YGROSS
- eq_damfrac(t,n)$(reg(n))..   DAMFRAC(t,n)  =E= (-1) * ( DAMAGES(t,n) / YGROSS(t,n) )  ;
-
-
-#=========================================================================
-*   ///////////////////////     SIMULATION    ///////////////////////
-#=========================================================================
-
-##  SIMULATION HALFLOOP 1
-#_________________________________________________________________________
-$elseif.ph %phase%=='simulate_1'
-
-##  BURKE'S IMPACT -------------------------------------
-* BHM's yearly local impact
- BIMPACT.l(t,n)  =  beta_bhm('T',  n, t) * TEMP_REGION_DAM.l(t,n)
-                 +  beta_bhm('T2', n, t) * power(TEMP_REGION_DAM.l(t,n),2)
-                 -  beta_bhm('T',  n, t) * climate_region_coef('base_temp', n)
-                 -  beta_bhm('T2', n, t) * power(climate_region_coef('base_temp', n),2)  ;
-
-# OMEGA FULL
-$ifthen.omg  %omega_eq% == 'full'
-* Capital-Omega factor
- KOMEGA.l(t,n)  =  ( (((1-dk)**tstep) * K.l(t,n)   +  tstep * S.l(t,n) * tfp(t,n) * (K.l(t,n)**gama) * ((pop(t,n)/1000)**(1-gama)) * (1/(1+OMEGA.l(t,n))) ) / K.l(t,n) )**gama  ;
-* Omega full formulation
- OMEGA.l(t+1,n)$(not tlast(t))  =  ((  (1 + (OMEGA.l(t,n)))
-                                    #  TFP factor
-                                    *  (tfp(t+1,n)/tfp(t,n))
-                                    #  Pop factor
-                                    *  ((( pop(t+1,n)/1000  )/( pop(t,n)/1000 ))**(1-gama)) * (pop(t,n)/pop(t+1,n)) 
-                                    #  Capital-Omega factor
-                                    *  KOMEGA.l(t,n)
-                                    #  BHM impact on pc-growth
-                                    /  ((1 + basegrowthcap(t,n) + BIMPACT.l(t,n))**tstep)
-                                    ) - 1    )  ;
-# OMEGA SIMPLE
-$else.omg
-* Omega-simple formulation
- OMEGA.l(t+1,n)$(not tlast(t))  =  ( (1 + (OMEGA.l(t,n))) / ((1 + BIMPACT.l(t,n))**tstep) ) - 1  ;
-$endif.omg
-
-
-##  ESTIMATED YNET AND DAMAGES -------------------------
-* Unbounded Damfrac
-DAMFRAC_UNBOUNDED.l(t,n)  =   1 - ( 1/(1+OMEGA.l(t,n)) )  ;
-* Unbounded YNET
-YNET_UNBOUNDED.l(t,n)  =  YGROSS.l(t,n) * (1 - DAMFRAC_UNBOUNDED.l(t,n))  ;
-* Gains upperbound 
-YNET_UPBOUND.l(t,n)  =  min( YNET_UNBOUNDED.l(t,n) , ynet_maximum(t,n) )  ; 
-* Damages lowerbound and final YNET
-YNET_ESTIMATED.l(t,n) =  max( YNET_UPBOUND.l(t,n) , ynet_minimum(t,n) )   ;
-
-##  EFFECTIVE DAMAGES ----------------------------------
-* Effective net Damages
-DAMAGES.l(t,n)  =  (YGROSS.l(t,n) - YNET_ESTIMATED.l(t,n)) ;
-* Effective Damages as fraction of YGROSS
-DAMFRAC.l(t,n)  =  (-1) * (DAMAGES.l(t,n)/YGROSS.l(t,n))  ;
 
 
 #===============================================================================
@@ -363,12 +248,9 @@ damages_burkesim
 ynetcap_burkesim
 ynet_burkesim
 world_damfrac_burkesim
-ynet_maximum
-ynet_minimum
 
 # Variables --------------------------------------------
 BIMPACT
-OMEGA
 KOMEGA
 
 

@@ -124,7 +124,9 @@ eq_mu(t+1)..   MU(t+1)  =E=  MAT(t)*b12 + MU(t)*b22 + ML(t)*b32 ;
 eq_ml(t+1)..   ML(t+1)  =E=  MU(t)*b23 + ML(t)*b33  ;
 
 # FORCING ---------------------------------------------
-eq_forc(t)..   FORC(t)  =E=  fco22x * ((log((MAT(t)/matpre))/log(2))) + forcoth(t)  ;
+eq_forc(t)..   FORC(t)  =E=  fco22x * ((log((MAT(t)/matpre))/log(2))) + forcoth(t)
+$if set mod_srm + geoeng_forcing*(wsrm(t) + sum(nn$reg(nn), (SRM(t,nn) - SRM.l(t,nn))))
+;
 
 # TEMPERATURES -----------------------------------------
 * Athmosphere
@@ -146,25 +148,6 @@ $elseif.ph %phase%=='after_solve'
 # is called.
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-$set phase 'simulate_1'
-$batinclude 'modules/hub_climate'
-$set phase 'after_solve'
-
-#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-# NOTE ALSO: by calling hub_climate you are automatically 
-# selecting the simulate_1 phase of the corresponding climate module.
-#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-
-#=========================================================================
-*   ///////////////////////     SIMULATION    ///////////////////////
-#=========================================================================
-
-
-##  SIMULATION HALFLOOP 1
-#_________________________________________________________________________
-$elseif.ph %phase%=='simulate_1'
-
 # CARBON CYCLE -----------------------------------------
 MAT.l(t+1)  =  MAT.l(t)*b11 + MU.l(t)*b21 + (sum(n, E.l(t,n)) * tstep * CO2toC ) ; # Carbon
 
@@ -173,7 +156,9 @@ MU.l(t+1)  =  MAT.l(t)*b12 + MU.l(t)*b22 + ML.l(t)*b32 ;
 ML.l(t+1)  =  MU.l(t)*b23 + ML.l(t)*b33 ;
 
 # FORCING ----------------------------------------------
-FORC.l(t)  =  fco22x * ((log((MAT.l(t)/matpre))/log(2))) + forcoth(t);
+FORC.l(t)  =  fco22x * ((log((MAT.l(t)/matpre))/log(2))) + forcoth(t)
+$if set mod_srm +geoeng_forcing*sum(n,SRM.l(t,n))
+;
 
 # TEMPERATURES -----------------------------------------
 * Athmosphere

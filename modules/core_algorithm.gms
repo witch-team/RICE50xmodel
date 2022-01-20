@@ -10,14 +10,15 @@ $ifthen.ph %phase%=='conf'
 
 # CONVERGENCE
 * Maximum number of iterations
-$setglobal maxiter 60
+$setglobal maxiter 100
 $if set debug $setglobal maxiter 30
 * Minimum number of iterations
 $setglobal miniter 3
 $setglobal convergence_tolerance 1e-1
-$setglobal max_seconds 300
+$setglobal max_seconds 300 #5 minutes
+$setglobal max_seconds 60*60 #1 hour
 # 5
-$setglobal max_solretry 1000
+$setglobal max_solretry 100
 
 
 ## SETS

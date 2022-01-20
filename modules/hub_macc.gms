@@ -8,11 +8,8 @@
 $ifthen.ph %phase%=='conf'
 
 # MACC CURVES formula
-* | enerdata | DICE2016 |
+* | enerdata | dice2016 |
 $setglobal macc_shape 'enerdata'
-
-* Default options
-$setglobal default_macc_shape 'enerdata'
 
 
 ##  DECLARE VARIABLES
@@ -26,10 +23,8 @@ VARIABLES
 POSITIVE VARIABLES ABATECOST, CPRICE ;
 
 # VARIABLES STARTING LEVELS ----------------------------
-* to help convergence if no startboost is loaded
 ABATECOST.l(t,n) = 0 ;
    CPRICE.l(t,n) = 0 ;
-
 
 #=========================================================================
 *   ///////////////////////     OPTIMIZATION    ///////////////////////
@@ -60,5 +55,5 @@ $endif.ph
 #===============================================================================
 
 * Include the MACcurves full logic (selected as global option)
-* Alternatives: | enerdata | DICE2016 |
+* Alternatives: | enerdata | dice2016 |
 $batinclude 'modules/mod_macc_%macc_shape%'  %1
