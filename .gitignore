@@ -5,6 +5,7 @@
 !.gitignore
 !README.md
 !CONTRIBUTING.md
+!CHANGELOG
 !*.gms
 
 # Whitelist subdirectory
@@ -12,19 +13,15 @@
 # "/" is NOT optional when followed by a *
 
 !input/
-!input/datasets/
 !input/R/
 !input/regions/
 !input/time/
 input/build/*
-input/data/*
-!algorithm/
+!algo/
 !input/
 !modules/
 !post/
 !tools/
-!tools/magicc
-tools/magicc/tmp/*
 
 #Calibrations
 input/calibrations/build
@@ -38,24 +35,27 @@ input/calibrations/temp
 .Rproj.user
 .vscode
 rsconnect
-svn-commit.tmp
+*.gpr
+*.gch
 *.log
 *.lst
 *.lxi
 *.par
+*.Rproj
 *.tar.gz
 *.zip
 *.~gm
+~$*.*
 *.Rprofvis
 */225*/
 .#*
 .svn
 tools/python/*
 venv/
-*.gpr
-*.Rproj
 
-input/data/
+
 !run_policies.sh
 !conopt.opt
 !conopt4.opt
+
+*.gsp

@@ -8,8 +8,6 @@ scalar iternum;
 file fx;
 put fx;
 
-*$if set debug option iterlim  = 1e5;
-
 $if not set solvermode $setglobal solvermode nlp
 
 *///////////////////////////////////////////////////////////////////////////////
@@ -37,7 +35,7 @@ CO2.solvelink = %solvelink%; # Solving optios
 ** SUBMISSION LOOP
 *..................................................
 * Step 1: every coalition evaluates its best alone-solution
-$if set debug cltsolve(clt) = no; cltsolve('%debug%') = yes;
+$if set only_solve cltsolve(clt) = no; cltsolve('%only_solve%') = yes;
 loop(clt$(cltsolve(clt)), # only active coalitions
     reg(nn) = yes$map_clt_n(clt,nn);  # Set <reg> to one single region per loop and then
                                       # solve the model (every equation constrained by reg(n)
@@ -98,13 +96,8 @@ repeat
                 if( solretry(iter,clt) < %max_solretry%,
                     solretry(iter,clt) = solretry(iter,clt) + 1;
 
-
-                    # Set solving region to problematic one
+                    # Set solving region
                     reg(nn) = yes$map_clt_n(clt,nn);
-
-                    # Inform the model that we are in this phase
-                    # (some ad-hoc changes may help in best managing the situation)
-$batinclude "modules" 'problematic_regions'
 
                     # Launch serially the model
                     solve CO2 maximizing UTILITY using %solvermode%;
@@ -119,16 +112,10 @@ $batinclude "modules" 'problematic_regions'
                     clt_problem(clt) = yes; # save coalition in "problem" shame-list
                 );
 
-
-
         # Region solved correctly
         else
-
             h(clt)=0;
-
         ); # end of problematic coalitions management
-
-
     );# end of handlecollect loop
 
 
@@ -144,15 +131,9 @@ until ((card(h) eq 0) or ((timeelapsed-timer) gt %max_seconds%));
 *..................................................
 * Check that every parallel job has been managed properly
 
-
 * If card(h) is not empty at this stage,
 * it means that timeout has expired.
 abort$(card(h) gt 0) 'ERROR: TIME OUT, %max_seconds% seconds elapsed and not all solves are complete';
-
-* Debug logic and reporting
-*$batinclude modules 'debug'
-
-
 
 * Re-run problematic regions (if any) serially
 if(card(clt_problem) gt 0,
@@ -170,12 +151,6 @@ if(card(clt_problem) gt 0,
 );
 
 
-
-
-
-
-
-
 *===============================================================================
 *                       CONVERGENCE RULE
 *===============================================================================
@@ -184,31 +159,31 @@ if(card(clt_problem) gt 0,
 viter(iter,'S',t,n)$nsolve(n)   = S.l(t,n);    # Keep track of last investment values
 viter(iter,'MIU',t,n)$nsolve(n) = MIU.l(t,n);  # Keep track of last mitigation values
 
+allerr(iter,v) = smax((t,n)$nsolve(n), abs(viter(iter,v,t,n)-viter(iter-1,v,t,n))); 
 
 
 * Evaluate distance measure for convergence
 * max_solution_change among all regions and all times between eiter(i,..) and eiter(i-1,..)
-max_solution_change$(ord(iter) > 1) = smax((v,t,n)$nsolve(n), abs(viter(iter,v,t,n)-viter(iter-1,v,t,n))) ;
-$if %policy%=='cbudget' $if %cooperation%=='noncoop' max_solution_change$(ord(iter) > 1) = max(smax((v,t,n)$nsolve(n), abs(viter(iter,v,t,n)-viter(iter-1,v,t,n))),abs(cbudget_2019_2100-ctax_target_rhs)*%convergence_tolerance%/%conv_budget%) ; 
+max_solution_change$(ord(iter) gt 1) = smax(v$vcheck(v), allerr(iter,v));
 max_solution_change_iter(iter) = max_solution_change;
 *display max_solution_change;
-
 
 
 ** Convergence rule:
 * this max_solution_change must be under a specific threshold
 * CONVERGENCE TOLERANCE could be set!
-converged$((sum(cltsolve, solrep(iter,cltsolve,'ok')) eq card(cltsolve)) and (max_solution_change lt %convergence_tolerance%) and (iter.pos gt %miniter%)) = 1;
+converged$(
+$if %policy%=="cbudget_regional" $if %burden%=="cost_efficiency" ( abs(cbudget_2020_2100 - ctax_target_rhs) le %conv_budget%) and
+    (sum(cltsolve, solrep(iter,cltsolve,'ok')) eq card(cltsolve)) and 
+    (max_solution_change lt %convergence_tolerance%) and 
+    (ord(iter) ge %miniter%))
+    = 1;
 
 ** Weights may change AFTER FIRST ITERATION
 $if %region_weights% == 'negishi' nweights(t,n)$((not converged)) = %calc_nweights%;
 
-
-
 * Update the model propagating all needed infos
 $batinclude "modules" "after_solve"
-
-
 
 * For every iteration dump current situation (even if not converged)
 $if set all_data_temp put_utility 'gdxout' / 'all_data_temp_%nameout%.gdx' ; execute_unload;

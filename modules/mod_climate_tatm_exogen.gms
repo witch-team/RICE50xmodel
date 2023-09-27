@@ -16,6 +16,7 @@
 $ifthen.ph %phase%=='conf'
 
 $setglobal tatm_inc_tstep 0.05
+#setglobal results_for_fixed_tatm results_ssp2_cba_noncoop.gdx
 
 ## INCLUDE DATA
 #_________________________________________________________________________
@@ -53,12 +54,19 @@ PARAMETER
     temp_tatm_exogen(t)   'Atmospheric temperature increase from external data [+°C]'
 ;
 
+$ifthen.exo set results_for_fixed_tatm 
+$gdxin %results_for_fixed_tatm%
+$loaddc temp_tatm_exogen = TATM.l
+$gdxin
+$endif.exo
 ##  COMPUTE DATA
 #_________________________________________________________________________
 $elseif.ph %phase%=='compute_data'
 
+$ifthen.exo not set results_for_fixed_tatm
 #for now simplified trajectories for tatm
 temp_tatm_exogen(t) = tatm0 + tatm_inc_tstep * (t.val - 1);
+$endif.exo
 
 * OGHG forcing exogenous DICE-like
 forcoth(t) = fex0 + (1/17) * (fex1-fex0) * (t.val-1)$(t.val lt 18)  # Linear interpolation from fex0 (t1) to fex1 (t17),
@@ -79,7 +87,8 @@ fcorr = 0.6*( force2015 - force0ev);
 $elseif.ph %phase%=='compute_vars'
 
 FORC.FX(tfirst) = 2.4634;  # from DICE2016
-
+TATM.lo(tfirst) = -inf;
+TATM.up(tfirst) = +inf;
 
 #=========================================================================
 *   ///////////////////////     OPTIMIZATION    ///////////////////////

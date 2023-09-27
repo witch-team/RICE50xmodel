@@ -24,6 +24,14 @@ $setglobal  omega_eq 'simple'
 * Damages in the optimization ('' using the endogenous variable) or post-processed ('.l' using the level in the equation)
 $setglobal dam_endo '' #'.l'
 
+* Given the Burke extreme impact functions, use a damage cap by default
+$setglobal damage_cap
+
+* When running in simulation, OMEGA needs to be bounded below otherwise it hits the zero constraint
+* Usage: '' is the normal OMEGA, '_UNBOUNDED' uses the lower bound
+$setglobal omegabnd '' #default
+$if set temp_region_exogen $setglobal omegabnd '_UNBOUNDED'
+
 ## INCLUDE DATA
 #_________________________________________________________________________
 $elseif.ph %phase%=='include_data'
@@ -60,6 +68,10 @@ PARAMETERS
     ykalicap_worldavg(t)    'World average GDP per capita'
 ;
 
+$ifthen.exog set temp_region_exogen
+SCALAR    omega_minimum           'Prevent OMEGA from hitting the 0 lower bound when temperature is exogenous';
+omega_minimum = (-1 + 1e-4) ;
+$endif.exog
 
 ##  COMPUTE DATA
 #_________________________________________________________________________
@@ -144,6 +156,10 @@ KOMEGA.lo(t,n) = 0;
 BIMPACT.l(t,n) = 0 ;
 KOMEGA.l(t,n) = 1 ;
 
+$ifthen.exog set temp_region_exogen
+Variable        OMEGA_UNBOUNDED(t,n)     'Unbounded Omega';
+OMEGA_UNBOUNDED.l(t,n) = 0;
+$endif.exog
 
 ##  COMPUTE VARIABLES
 #_________________________________________________________________________
@@ -153,6 +169,9 @@ $elseif.ph %phase%=='compute_vars'
 * to avoid errors/help the solver to converge
 BIMPACT.lo(t,n) = (-1 + 1e-6) ; # needed because of eq_omega 
 
+BIMPACT.fx(tfirst,n) = 0;
+
+OMEGA.scale(t,n)  = 1e6 ;
 
 #=========================================================================
 *   ///////////////////////     OPTIMIZATION    ///////////////////////
@@ -164,6 +183,7 @@ $elseif.ph %phase%=='eql'
 
 eq_bimpact   # BHM yearly impact equation
 eq_omega     # Impact over time equation
+$if set temp_region_exogen eq_omega_unbounded
 $if %omega_eq% == 'full' eq_komega     # Capital-Omega impact factor equation (only for full-omega)
 
 
@@ -173,19 +193,17 @@ $elseif.ph %phase%=='eqs'
 
 ##  BURKE'S IMPACT --------------------------------------
 * BHM's yearly local impact
- eq_bimpact(t,n)$(reg(n))..  BIMPACT(t,n)  =E=  beta_bhm('T', n, t) * TEMP_REGION_DAM%dam_endo%(t,n)
-                                            +   beta_bhm('T2', n, t)* power(TEMP_REGION_DAM%dam_endo%(t,n),2)
-                                            -   beta_bhm('T', n, t) * climate_region_coef('base_temp', n)
-                                            -   beta_bhm('T2', n, t)* power(climate_region_coef('base_temp', n),2) ;
+ eq_bimpact(t,n)$(reg(n) and ord(t) gt 1)..  BIMPACT(t,n)  =E=  beta_bhm('T', n, t) * ( TEMP_REGION_DAM%dam_endo%(t,n) - climate_region_coef('base_temp',n) )
+                                            +   beta_bhm('T2', n, t)* ( power(TEMP_REGION_DAM%dam_endo%(t,n),2) - power(climate_region_coef('base_temp',n),2) ) ;
 
 # OMEGA FULL
 $ifthen.omg %omega_eq% == 'full'
 * Omega full formulation
- eq_omega(t,n)$(reg(n) and not tlast(t))..  OMEGA(t+1,n)  =E=  (  (1 + (OMEGA(t,n)))
+ eq_omega(t,n)$(reg(n) and not tlast(t))..  OMEGA%omegabnd%(t+1,n)  =E=  (  (1 + (OMEGA%omegabnd%(t,n)))
                                                                             #  TFP factor
                                                                             *  (tfp(t+1,n)/tfp(t,n))
                                                                             #  Pop factor
-                                                                            *  ((( pop(t+1,n)/1000  )/( pop(t,n)/1000 ))**(1-gama)) * (pop(t,n)/pop(t+1,n))
+                                                                            *  ((( pop(t+1,n)/1000  )/( pop(t,n)/1000 ))**prodshare('labour',n)) * (pop(t,n)/pop(t+1,n))
                                                                             #  Capital-Omega factor
                                                                             *  KOMEGA(t,n)
                                                                             #  BHM impact on pc-growth
@@ -193,13 +211,18 @@ $ifthen.omg %omega_eq% == 'full'
                                                                         ) - 1  ;
 
 * Capital-Omega factor
- eq_komega(t,n)$(reg(n))..  KOMEGA(t,n)  =E=  ( (((1-dk)**tstep) * K(t,n)  +  tstep * S(t,n) * tfp(t,n) * (K(t,n)**gama) * ((pop(t,n)/1000)**(1-gama)) * (1/(1+OMEGA(t,n))) ) / K(t,n) )**gama  ;
+ eq_komega(t,n)$(reg(n))..  KOMEGA(t,n)  =E=  ( (((1-dk)**tstep) * K(t,n)  +  tstep * S(t,n) * tfp(t,n) * (K(t,n)**prodshare('capital',n)) * ((pop(t,n)/1000)**prodshare('labour',n)) * (1/(1+OMEGA%omegabnd%(t,n))) ) / K(t,n) )**prodshare('capital',n)  ;
 # OMEGA SIMPLE
 $else.omg
 * Omega-simple formulation
- eq_omega(t,n)$(reg(n)  and not tlast(t))..  OMEGA(t+1,n)  =E=  (  (1 + (OMEGA(t,n))) / ((1 + BIMPACT(t,n))**tstep)  ) - 1  ;
+ eq_omega(t,n)$(reg(n)  and not tlast(t))..  OMEGA%omegabnd%(t+1,n)  =E=  (  (1 + (OMEGA%omegabnd%(t,n))) / ((1 + BIMPACT(t,n))**tstep)  ) - 1  ;
 $endif.omg
 
+
+$ifthen.exog set temp_region_exogen
+ eq_omega_unbounded(t,n)$(reg(n) and not tlast(t))..
+   OMEGA(t,n)  =E=  ( OMEGA_UNBOUNDED(t,n) + omega_minimum + Sqrt( Sqr(OMEGA_UNBOUNDED(t,n) - omega_minimum) + Sqr(delta) ) )/2  ;
+$endif.exog
 
 #===============================================================================
 *     ///////////////////////     REPORTING     ///////////////////////

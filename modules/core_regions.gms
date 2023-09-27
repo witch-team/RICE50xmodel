@@ -27,10 +27,9 @@ set   reg(n)     'Active regions to be solved' ;
 alias(n,nn,nnn,nnnn);
 
 * Subset regulating how many countries to solve
-* (according to the debug flag presence)
 set nsolve(n)   'Which regions must be solved across n set';
-$if set debug nsolve(n) = yes$(sameas(n,'%debug%'));
-$if not set debug nsolve(n) = yes;
+$if set only_solve nsolve(n) = yes$(sameas(n,'%only_solve%'));
+$if not set only_solve nsolve(n) = yes;
 
 * no limits for the moment
 reg(n) = yes;

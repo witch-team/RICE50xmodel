@@ -15,7 +15,7 @@ $ifthen.ph %phase%=='conf'
 ##  SETTING CONF ---------------------------------------
 # These can be changed by the user to explore alternative scenarios
 
-# Social Welfare Function:  dice | disentangled | barrage
+# Social Welfare Function:  dice | disentangled
 $setglobal swf 'disentangled'
 
 * Time Discount Rate (rho) of the Ramsey equation
@@ -70,6 +70,11 @@ PARAMETERS
    rr(t)                 'Average utility Social Discount rate'
 ;
 
+PARAMETERS
+   welfare_bge(n)
+   welfare_regional(n)
+;
+
 ##  COMPUTE DATA
 #_________________________________________________________________________
 $elseif.ph %phase%=='compute_data'
@@ -92,6 +97,7 @@ VARIABLES
    CEMUTOTPER(t,n)   'Period utility'
    TUTILITY(t)       'Intra-region utility'
    UTILITY           'Welfare function'
+   UTARG(t,n)        'Argument of the utility function'
 ;
 
 
@@ -110,13 +116,11 @@ TUTILITY.lo(t) = 1e-3 ; # needed because of eq_utility (disentangled)
 #_________________________________________________________________________
 $elseif.ph %phase%=='eql'
 
-$ifthen.wf '%swf%'=='disentangled'
-   eq_welfare        # Welfare equation based on disentangled Epstein-Zin prefs
-   eq_util           # Welfare equation based on disentangled Epstein-Zin prefs
-$else.wf
+eq_utility_arg       # Argument fo the instantanteous utility function
+eq_util              # Objective function
+$ifthen.wf '%swf%'=='dice'
    eq_cemutotper     # Period utility
-   eq_periodu        # Instantaneous utility function equation
-   eq_util           # Objective function
+   eq_periodu        # Instantaneous utility function equation           
 $endif.wf
 
 
@@ -124,22 +128,28 @@ $endif.wf
 #_________________________________________________________________________
 $elseif.ph %phase%=='eqs'
 
-* Disentangled welfare function
-$ifthen.wf '%swf%'=='disentangled'
-eq_welfare(t).. TUTILITY(t)  =E=  sum(n$reg(n),  pop(t,n)/sum(nn$reg(nn),pop(t,nn))  *  ((CPC(t,n))**(1-gamma))  );
+$if not set alternative_utility eq_utility_arg(t,n)$(reg(n)).. UTARG(t,n) =E= CPC(t,n);
 
-eq_util.. UTILITY  =E=  sum(t, ( ( (TUTILITY(t)**((1-elasmu)/(1-gamma))) / (1-elasmu) ) - 1 )  * rr(t) )
-                    *   tstep;
+* Disentangled welfare function (within coalitions, using inequality aversion basd on gamma)
+$ifthen.wf '%swf%'=='disentangled' #(DEFAULT)
+eq_util.. UTILITY  =E=  sum(t, ( ( ( (sum(n$reg(n),  pop(t,n)/sum(nn$reg(nn),pop(t,nn))*((UTARG(t,n))**(1-gamma))))**((1-elasmu)/(1-gamma))) / (1-elasmu) ) - 1 )  * rr(t) );
 
-$else.wf
+$else.wf '%swf%'=='dice'
 * Original DICE welfare function adapted to multiregion
 eq_cemutotper(t,n)$(reg(n))..  CEMUTOTPER(t,n)  =E=  PERIODU(t,n) * rr(t) * pop(t,n)  ;
 
-eq_periodu(t,n)$(reg(n))..  PERIODU(t,n)  =E=  ( (CPC(t,n))**(1-elasmu) - 1)/(1-elasmu) - 1  ;
+eq_periodu(t,n)$(reg(n))..  PERIODU(t,n)  =E=  ( (UTARG(t,n))**(1-elasmu) - 1)/(1-elasmu) - 1  ;
 
 eq_util..   UTILITY   =E=  (dice_scale1 * tstep * sum((t,n)$map_nt, nweights(t,n)*CEMUTOTPER(t,n) )) + dice_scale2  ;
 $endif.wf
 
+##  AFTER SOLVE
+#_________________________________________________________________________
+$elseif.ph %phase%=='after_solve'
+
+#reporting some welfare measures (for regions, abstracting from inequality aversion)
+welfare_regional(n) = (sum(t, ( ( pop(t,n) * (UTARG.l(t,n)**(1-elasmu)) / (1-elasmu) ) )  * rr(t) ));
+welfare_bge(n) = ( welfare_regional(n) / (sum(t, ( ( pop(t,n) / (1-elasmu) ) )  * rr(t) )) )**(1/(1-elasmu));
 
 #===============================================================================
 *     ///////////////////////     REPORTING     ///////////////////////
@@ -151,9 +161,11 @@ $elseif.ph %phase%=='gdx_items'
 
 # Parameters -------------------------------------------
 nweights
+welfare_bge
+welfare_regional
 
 # Variables --------------------------------------------
 UTILITY
-
+UTARG
 
 $endif.ph

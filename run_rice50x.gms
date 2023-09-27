@@ -28,7 +28,7 @@ $setglobal n 'ed57'
 $setglobal baseline 'ssp2'
 
 * POLICY
-* | bau | bau_impact | cba | cbudget | ctax | simulation | simulation_tatm_exogen | simulation_climate_regional_exogen |
+* | bau | bau_impact | cba | cbudget | cbudget_regional | ctax | simulation | simulation_tatm_exogen | simulation_climate_regional_exogen |
 $setglobal policy 'bau'
 
 * COOPERATION
@@ -36,7 +36,7 @@ $setglobal policy 'bau'
 $setglobal cooperation 'noncoop'
 
 * IMPACT SPECIFICATION
-* | off | witch| dice | burke | dell | kalkuhl | howard |
+* | off | dice | burke | dell | kalkuhl | howard | climcost | coacch |
 $setglobal impact 'kalkuhl'
 
 * CLIMATE MODULE
@@ -47,8 +47,8 @@ $setglobal climate 'witchco2'
 * | fixed | flexible |
 $setglobal savings 'fixed'
 
-* RESULTS FILENAME if nameout is not set
-$setglobal nameout "%baseline%_%policy%_%cooperation%"
+* DEFAULT RESULTS FILENAME if nameout is not set
+$setglobal nameout "%baseline%_%policy%"
 
 
 *=========================================================================
@@ -61,10 +61,8 @@ $else
 $setglobal resdir "%workdir%\"
 $if %system.filesys% == UNIX $setglobal resdir "%workdir%/"
 $endif
-** Results filename
-$setglobal output_filename results_%nameout%
-** DEBUG OPTIONS (only one region is solved)
-*$setglobal debug usa
+** DEBUG OPTIONS
+*$setglobal onlysolve usa
 *$setglobal all_data_temp #to create an all_data_temp_%nameout%.gdx file after each iteration
 
 *=========================================================================
@@ -73,6 +71,9 @@ $setglobal output_filename results_%nameout%
 
 * Model configuration across all modules
 $batinclude "modules" "conf"
+
+** Results filename
+$setglobal output_filename results_%nameout%
 
 * Model definition through phases
 $batinclude "modules" "sets"
@@ -108,11 +109,6 @@ gdp2100=sum(n,YNET.l('18',n));
 display tatm2100,gdp2100,world_damfrac2100,elapsed;
 
 * PRODUCE RESULTS GDX
-execute_unload "%resdir%%output_filename%.gdx"
+execute_unload "%resdir%/%output_filename%.gdx"
 $batinclude "modules" "gdx_items"
-elapsed
-converged
-solrep
 ;
-$if set fullgdx execute_unload "%resdir%%output_filename%.gdx"
-

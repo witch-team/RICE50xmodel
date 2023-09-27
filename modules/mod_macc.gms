@@ -6,8 +6,8 @@
 *____________
 * REFERENCES
 * - EnerData(c) 2017 MACCs
+* - DICE 2016
 *
-
 #=========================================================================
 *   ///////////////////////       SETTING      ///////////////////////
 #=========================================================================
@@ -17,16 +17,12 @@
 * Definition of the global flags and settings specific to the module
 $ifthen.ph %phase%=='conf'
 
-##  SETTING CONF ---------------------------------------
-* These can be changed by the user to explore alternative scenarios
+# MACC CURVES formula
+* | ed | dice2016 |
+$setglobal macc 'ed'
 
 
-
-##  CALIBRATED CONF ------------------------------------
-* These settings shouldn't be changed
-
-
-# CORRECTION MULTIPLIER
+* CORRECTION MULTIPLIER
 * | ssp2marker | advance | ssp2markerXT | advanceXT |
 $setglobal mxdataref ssp2marker
 
@@ -59,8 +55,6 @@ $setglobal klogistic 0.25
 # MACC SHAPE
 * MACC fitting model | cstay14fit [polinomial 1-4] |
 $setglobal maccfit "poly14fit"
-
-
 
 ## SETS
 #_________________________________________________________________________
@@ -123,6 +117,16 @@ PARAMETERS
 ;
 
 
+
+##  PARAMETERS OF DICE2016 ABATEMENT COST FUNCTION
+PARAMETERS
+** Participation parameters
+    periodfullpart Period at which have full participation           /21  /  #DICE2013
+    partfract2010  Fraction of emissions under control in 2010       / 1  /  #DICE2013
+    partfractfull  Fraction of emissions under control at full time  / 1  /  #DICE2013
+;
+
+
 ##  PARAMETERS LOADED ----------------------------------
 
 * Correction multiplier calibrated
@@ -134,7 +138,7 @@ $gdxin
 
 * CO2 MAC-Curves fitting parameters
 PARAMETER  macc_%maccfit%_enerdata_CO2(sector,coef,t,n)  'EnerData CO2 MACC -fit with %maccfit%- for given years (2025-2040)'  ;
-$gdxin '%datapath%data_macc_enerdata_co2perc_fit'
+$gdxin '%datapath%data_macc_ed_co2perc_fit'
 $load  macc_%maccfit%_enerdata_CO2    = abat_coef_enerdata_%maccfit%
 $gdxin
 
@@ -194,7 +198,6 @@ $endif.oghg
 
 
 #  PBackstop curve -------------------------------------
-
 pbacktime(t)  =  pback*(1-gback)**(t.val-1);
 cost1(t,n)    =  pbacktime(t)*sigma(t,n)/expcost2/1000;
 
@@ -247,24 +250,20 @@ mx(t,n)      =  MXstart(n)  -  alpha(t) * MXdiff(t,n);
 $elseif.ph %phase%=='declare_vars'
 
 VARIABLES
-* Abatement costs
-    ABATECOST_ED(t,n) 'Cost of emissions reductions according to EnerData MACC  [Trill 2005 USD / year]'
-    ABATECOST_PB(t,n) 'Cost of emissions reductions according to PBackstop MACC [Trill 2005 USD / year]'
-    ABATECOST_OGHG(oghg,t,n)    'Cost of oghg emissions reductions [Trill 2005 USD / year]'
-* CPrices
-    CPRICE_ED(t,n)    'Carbon price according to EnerData MACC [ 2005 USD / tCO2 ]'
-    CPRICE_PB(t,n)    'Carbon price according to backstop [ 2005 USD / tCO2 ]'
+   ABATECOST(t,n)    'Cost of emissions reductions [Trill 2005 USD / year]'
+   CPRICE(t,n)       'Carbon Price [ 2005 USD /tCO2 ]'
+   ABATECOST_OGHG(oghg,t,n)    'Cost of oghg emissions reductions [Trill 2005 USD / year]'
 ;
-POSITIVE VARIABLES ABATECOST_ED, ABATECOST_PB, ABATECOST_OGHG, CPRICE_ED, CPRICE_PB;
 
-CPRICE_ED.l(t,n) = 0 ;
+POSITIVE VARIABLES ABATECOST, CPRICE, ABATECOST_OGHG;
 
-
+# VARIABLES STARTING LEVELS ----------------------------
+ABATECOST.l(t,n) = 0 ;
+   CPRICE.l(t,n) = 0 ;
 
 ##  COMPUTE VARIABLES
 #_________________________________________________________________________
 * In the phase COMPUTE_VARS, you fix starting points and bounds.
-* DO NOT put VAR.l here! (use the declare_vars phase)
 $elseif.ph %phase%=='compute_vars'
 
 
@@ -280,16 +279,10 @@ $elseif.ph %phase%=='compute_vars'
 * One per line.
 $elseif.ph %phase%=='eql'
 
-
-    eq_abate_ed          #'Cost of emissions reductions equation according to enerdata macc'
-    eq_abate_pb          #'Cost of emissions reductions equation according to pbackstop'
-
-    eq_cprice_ed          #'Carbon price equation according to enerdata macc'
-    eq_cprice_pb          #'Carbon price equation according to pbackstop'
+    eq_abatecost      # Cost of emissions reductions equation'
+    eq_cprice         # Carbon price equation'
 
 $if %climate% == 'witchoghg'  eq_abatecost_oghg   # Cost of oghg emissions reductions equation
-
-
 
 
 ##  EQUATIONS
@@ -300,30 +293,12 @@ $if %climate% == 'witchoghg'  eq_abatecost_oghg   # Cost of oghg emissions reduc
 $elseif.ph %phase%=='eqs'
 
 
-
-# ABATEMENT COSTS AND CPRICE FROM PBACKSTOP ------------
-
-eq_abate_pb(t,n)$(reg(n))..  ABATECOST_PB(t,n)  =E=   YGROSS(t,n) * cost1(t,n) * (MIU(t,n)**expcost2)  ;
-
-
-eq_cprice_pb(t,n)$(reg(n)).. CPRICE_PB(t,n)  =E=  pbacktime(t) * (MIU(t,n))**(expcost2-1)  ;
-
-
-
-
-# ABATE COSTS AND CPRICE FROM ENERDATA CO2 MACCs  ------
-
-
-* According to fitting procedure adopted, there is a different
-* equation to implement..
-
-* y ~ ax + bx^4   --with multiplier-->   y ~ mx (ax + bx^4)
-* with constraints (R-colf optim package) avoiding negative costs
+$ifthen.macc %macc%=="ed"
 
 * Abatement Cost ::   mx * (a(x^2)/2 + b(x^5)/5) * bau   :: [$/tCO2]x[GtCO2] ->  [ G$ ]
-eq_abate_ed(t,n)$(reg(n))..
+eq_abatecost(t,n)$(reg(n))..
                               #   Correction coefficient
-          ABATECOST_ED(t,n)  =E=  mx(t,n)
+          ABATECOST(t,n)  =E=  mx(t,n)
                               #   Tay14 integral
                               *   ((ax_co2('%maccfit%','Total_CO2',t,n)*power(MIU(t,n),2)/2)  +  (bx_co2('%maccfit%','Total_CO2',t,n)*power(MIU(t,n),5)/5))
                               #   Baseline emissions (due to miu-based integral) [GtCO2]
@@ -335,21 +310,15 @@ eq_abate_ed(t,n)$(reg(n))..
 
 
 * Carbon Price ::   y ~ mx (ax + bx^4)
-eq_cprice_ed(t,n)$(reg(n))..
+eq_cprice(t,n)$(reg(n))..
                               #   Correction coefficient
-             CPRICE_ED(t,n)  =E=  mx(t,n)
+             CPRICE(t,n)  =E=  mx(t,n)
                               #   Taylor14 formulation
                               *   ((ax_co2('%maccfit%','Total_CO2',t,n)*MIU(t,n)) + (bx_co2('%maccfit%','Total_CO2',t,n)*power(MIU(t,n),4)))
 ;                             # >> CPrice will result in [$/tCO2] by construction
 
 
-
-
-
-
 * :::::  ABATE COSTS AND CPRICE FROM ENERDATA OGHG MACCs  ::::: *
-
-
 ** OGHG ABATECOSTS
 $ifthen.oghg %climate% == 'witchoghg'
  eq_abatecost_oghg(oghg,sector,t,n)$(reg(n) and  map_sector_ghg(sector,oghg))..
@@ -359,18 +328,18 @@ $ifthen.oghg %climate% == 'witchoghg'
                               *   oghg_emi_bau(oghg,t,n)
                                   # Coversion result     [ G$/1000 = Trill$ ]
                               /   1000   ;
-
 $endif.oghg
 
+$elseif.macc %macc%=="dice2016"
+** ABATECOST AND CPRICE AS IN ORIGINAL DICE2016
+eq_abatecost(t,n)$(reg(n))..
+             ABATECOST(t,n)  =E=  YGROSS(t,n) * cost1(t,n) * (MIU(t,n)**expcost2)
+;
 
-
-
-#  FINAL ABATECOSTS AND CPRICE --------------------
-
-eq_abatecost(t,n)$(reg(n)).. ABATECOST(t,n)  =E=  ABATECOST_ED(t,n)  ;
-
-eq_cprice(t,n)$(reg(n)).. CPRICE(t,n)  =E=  CPRICE_ED(t,n)  ;
-
+eq_cprice(t,n)$(reg(n))..
+                CPRICE(t,n)  =E=  pbacktime(t) * (MIU(t,n))**(expcost2-1)
+;
+$endif.macc
 
 #===============================================================================
 *     ///////////////////////     REPORTING     ///////////////////////
@@ -388,12 +357,15 @@ gback
 expcost2
 pbacktime
 mx
+cost1
+ax_co2
+bx_co2
+alpha
 
 # Variables ------------------------------
-ABATECOST_PB
-ABATECOST_ED
-CPRICE_ED
-CPRICE_PB
+
+ABATECOST
+CPRICE
 
 
 $endif.ph 

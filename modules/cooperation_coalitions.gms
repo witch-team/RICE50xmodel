@@ -28,6 +28,11 @@ $elseif.ph %phase%=='sets'
 
 * Some pre-defined coalitions
 * in a policy file this set can be extended with new coalitions
+
+* to implement an srm_coalition use the flag %coalition_folder% and 
+* put the files inside data_srm_coalition/%coalition_folder%/map_clt_n.inc 
+* and data_srm_coalition/%coalition_folder%/cltsolve.inc
+
 SET clt "List of all possibly-applied coalitions" /
 # Single-region coalitions
 $include %datapath%n.inc
@@ -36,12 +41,18 @@ eu27
 noneu27
 # Grand coalition (all)
 grand
-
+srm_coalition
+coal_a
+coal_b
+coal_c
+coal_d
+coal_e
 /;
 
 * Some pre-defined coalitions mapping
 * in a policy file this set can be extended with new coalitions
 SET map_clt_n(clt,n) "Mapping set between coalitions and belonging regions" /
+$ifthen.regionselected %n%=="ed57"
 # Single-region coalition
 arg.arg
 aus.aus
@@ -106,15 +117,50 @@ eu27.(aut, bel, bgr, cro, dnk, esp, fin, fra, grc, hun, irl, ita, nld, pol, prt,
 noneu27.(gbr, arg, aus, bra, can, chl, chn, cor, egy, golf57, idn, jpn, meme, mex, mys, nde, noan, noap, nor, osea, rcam, ris, rjan57, rsaf, rsam, rsas, rus, sui, tha, tur, ukr, usa, vnm, zaf, oeu)
 # Grand coalitions (all)
 grand.(aut, bel, bgr, cro, dnk, esp, fin, fra, grc, hun, irl, ita, nld, pol, prt, rcz, rfa, rom, rsl, slo, swe, blt, gbr, arg, aus, bra, can, chl, chn, cor, egy, golf57, idn, jpn, meme, mex, mys, nde, noan, noap, nor, osea, rcam, ris, rjan57, rsaf, rsam, rsas, rus, sui, tha, tur, ukr, usa, vnm, zaf, oeu)
+$elseif.regionselected %n%=="witch17"
+# Single-region coalition
+brazil.brazil
+canada.canada
+china.china
+europe.europe
+india.india
+indonesia.indonesia
+jpnkor.jpnkor
+laca.laca
+mena.mena
+mexico.mexico
+oceania.oceania
+sasia.sasia
+seasia.seasia
+southafrica.southafrica
+ssa.ssa
+te.te
+usa.usa
+# European Union
+eu27.(europe)
+# Non-EU27
+noneu27.(brazil,canada,china,india,indonesia,jpnkor,laca,mena,mexico,oceania,sasia,seasia,southafrica,ssa,te,usa)
+# Grand coalitions (all)
+grand.(brazil,canada,china,europe,india,indonesia,jpnkor,laca,mena,mexico,oceania,sasia,seasia,southafrica,ssa,te,usa)
+$endif.regionselected
+$if set coalition_folder $include %datapath%data_srm_coalition/%coalition_folder%/map_clt_n.inc
 /;
 
 # Control set for active coalitions
-SET cltsolve(clt);
+SET cltsolve(clt) /
+$if set coalition_folder $include %datapath%data_srm_coalition/%coalition_folder%/cltsolve.inc
+/;
+
+$ifthen.srm not set coalition_folder
 * Initialized to no
 cltsolve(clt) = no;
 
 cltsolve('eu27') = yes;
 cltsolve('noneu27') = yes;
+$endif.srm
+# MACRO mapping between coalitions and belonging regions (probaby now obsolete due to changes in solver)
+$macro mapclt(n)    map_clt_n(&clt,n)
+$macro mapcclt(nn)  map_clt_n(&clt,nn)
 
 
 ##  BEFORE SOLVE
@@ -131,6 +177,7 @@ $elseif.ph %phase%=='gdx_items'
 
 clt
 map_clt_n
+cltsolve
 
 
 $endif.ph

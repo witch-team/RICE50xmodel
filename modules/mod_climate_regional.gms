@@ -17,12 +17,17 @@ $ifthen.ph %phase%=='conf'
 # for damages evaluation equal to maximum observed temperature in past calibration data )
 *$setglobal temp_region_cap
 
+$setglobal downscaling cmip6_pop #cmip5_pop, cmip6_pop, cmip6_area
+
 ## SETS
 #_________________________________________________________________________
 $elseif.ph %phase%=='sets'
 
 set tincpast /'-8','-7','-6','-5','-4','-3','-2','-1','0',1*58/; 
-set tnopast(tincpast) /1*58/;  
+set tnopast(tincpast) /3*58/;  
+set tpast(tincpast);  
+
+tpast(tincpast) = not tnopast(tincpast);
 
 ## INCLUDE DATA
 #_________________________________________________________________________
@@ -31,22 +36,34 @@ $elseif.ph %phase%=='include_data'
 ##  PARAMETERS HARDCODED OR ASSIGNED -------------------
 SCALAR max_temp_region_dam "Maximum temperature observed in regions' past time series [°C]" /30/;
 
+Parameter tatm_valid(tincpast) "Historical temperatures for past data, increase relative to 1850-1900 mean";
+
+Parameter temp_valid_yearlu(*,yearlu,n);
+$gdxin '%datapath%/data_historical_values.gdx'
+$ifthen.cmip %downscaling%=="cmip5_pop" $load temp_valid_yearlu=temp_valid_hadcrut4
+$else.cmip $load temp_valid_yearlu=temp_valid_hadcrut5
+$endif.cmip
+$gdxin 
+
 # Downscaler coefficients
 parameter climate_region_coef(*,n)  'Estimated coefficients to link GMT and country-level mean temperatures';
 $gdxin '%datapath%data_mod_climate_regional'
-$loaddc climate_region_coef
+$if %downscaling%=="cmip5_pop" $loaddc climate_region_coef=climate_region_coef_cmip5
+$if %downscaling%=="cmip6_pop" $loaddc climate_region_coef=climate_region_coef_cmip6_pop
+$if %downscaling%=="cmip6_area"  $loaddc climate_region_coef=climate_region_coef_cmip6_area
+$gdxin
+
+parameter temp_region_valid(t,n,*);
+$gdxin '%datapath%data_mod_climate_regional'
+$if %downscaling%=="cmip5_pop" $loaddc temp_region_valid=temp_region_valid_cmip5
+$if %downscaling%=="cmip6_pop" $loaddc temp_region_valid = temp_region_valid_pop_cmip6
+$if %downscaling%=="cmip6_area" $loaddc temp_region_valid = temp_region_valid_area_cmip6
 $gdxin
 
 $ifthen.exo set temp_region_exogen
-#Source:  http://climexp.knmi.nl/selectfield_cmip5.cgi?id=someone@somewhere
-#Ensemble mean across 19 models (all, not bias corrected)
-parameter temp_region_valid_cmip5(t,n,*);
-$gdxin '%datapath%data_mod_climate_regional'
-$loaddc temp_region_valid_cmip5
-$gdxin
 # Exogen local temperatures (for simulation purposes only).
 PARAMETER  temp_region_exogen(t,n) 'Loaded exogeous local temperatures';
-temp_region_exogen(t,n) = temp_region_valid_cmip5(t,n,'%temp_region_exogen%');
+temp_region_exogen(t,n) = temp_region_valid(t,n,'%temp_region_exogen%');
 temp_region_exogen(t,n)$(t.val gt 18) = temp_region_exogen('18',n);
 $endif.exo
 
@@ -54,8 +71,9 @@ $endif.exo
 #_________________________________________________________________________
 $elseif.ph %phase%=='compute_data'
 
-
-
+#calculate average 5yr temperature from yearly hadcrut4 data
+tatm_valid(tincpast)$tpast(tincpast) = sum((n,yearlu)$(yearlu.val> (2015-tstep*(1-tincpast.val))-3 and yearlu.val<(2015-tstep*(1-tincpast.val))+3),temp_valid_yearlu('atm',yearlu,n))/(sum(n,1)*tstep) ;
+tatm0=tatm_valid('1');
 
 ##  DECLARE VARIABLES
 #_________________________________________________________________________
@@ -80,22 +98,17 @@ $elseif.ph %phase%=='compute_vars'
 * Tolerance for min/max nlp smooting
 SCALAR   delta_tempcap  /1e-4/ ;
 
-#compute past temperature (0=2010, -6=1980) values and fix based on same downscaling (hadcrud4 global temp anomaly, corrected for 2015 different (hadcrut, 0.977784, model 0.85))
-TEMP_REGION_DAM_INCPAST.fx('0',n) = climate_region_coef('alpha_temp',n) + (climate_region_coef('beta_temp',n)) * (0.782984 - (0.977784-0.85));
-TEMP_REGION_DAM_INCPAST.fx('-1',n) = climate_region_coef('alpha_temp',n) + (climate_region_coef('beta_temp',n)) * (0.81058 - (0.977784-0.85));
-TEMP_REGION_DAM_INCPAST.fx('-2',n) = climate_region_coef('alpha_temp',n) + (climate_region_coef('beta_temp',n)) * (0.72698 - (0.977784-0.85));
-TEMP_REGION_DAM_INCPAST.fx('-3',n) = climate_region_coef('alpha_temp',n) + (climate_region_coef('beta_temp',n)) * (0.56258 - (0.977784-0.85));
-TEMP_REGION_DAM_INCPAST.fx('-4',n) = climate_region_coef('alpha_temp',n) + (climate_region_coef('beta_temp',n)) * (0.50598 - (0.977784-0.85));
-TEMP_REGION_DAM_INCPAST.fx('-5',n) = climate_region_coef('alpha_temp',n) + (climate_region_coef('beta_temp',n)) * (0.38918 - (0.977784-0.85));
-TEMP_REGION_DAM_INCPAST.fx('-6',n) = climate_region_coef('alpha_temp',n) + (climate_region_coef('beta_temp',n)) * (0.35938 - (0.977784-0.85));
-TEMP_REGION_DAM_INCPAST.fx('-7',n) = climate_region_coef('alpha_temp',n) + (climate_region_coef('beta_temp',n)) * (0.21278 - (0.977784-0.85));
-TEMP_REGION_DAM_INCPAST.fx('-8',n) = climate_region_coef('alpha_temp',n) + (climate_region_coef('beta_temp',n)) * (0.23998 - (0.977784-0.85));
-
+#Parameter tatm_valid(tincpast)
+#tatm_valid(tincpast) = temp_valid_hardcrut4('')
+#compute past temperature (0=2010, -6=1980) values and fix based on same downscaling (hadcrud4 global temp anomaly)
+TEMP_REGION_DAM_INCPAST.fx(tincpast,n)$(tpast(tincpast)) = climate_region_coef('alpha_temp',n) + climate_region_coef('beta_temp',n) * tatm_valid(tincpast);
+TEMP_REGION.l(tfirst,n) = climate_region_coef('alpha_temp',n) + (climate_region_coef('beta_temp',n)) * TATM.l(tfirst);
 
 #_________________________________________________________________________
 $elseif.ph %phase%=='before_solve'
 
 TEMP_REGION.l(t,n) = climate_region_coef('alpha_temp',n) + (climate_region_coef('beta_temp',n)) * TATM.l(t);
+$if set temp_region_exogen TEMP_REGION.l(t,n)=temp_region_exogen(t,n);
 TEMP_REGION_DAM.l(t,n)  =  min(TEMP_REGION.l(t,n), max_temp_region_dam) ;
 
 
@@ -200,6 +213,8 @@ $elseif.ph %phase%=='gdx_items'
 # Parameters -------------------------------------------
 climate_region_coef
 deltatemp
+tatm_valid
+temp_region_valid
 
 # Variables --------------------------------------------
 TEMP_REGION

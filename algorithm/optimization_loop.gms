@@ -12,7 +12,6 @@ MODEL  CO2 /
 $batinclude "modules" "eql"
 /;
 CO2.optfile = 1;
-CO2.holdfixed = 1;
 CO2.SCALEOPT = 1;
 
 # ................................................
@@ -52,17 +51,18 @@ $setglobal solvelink %solvelink.AsyncThreads%
 
 # SOLVER OPTIONS
 $setglobal iterlim 99900
-option sysout     = on        ;
-option solprint   = on        ;
-option iterlim    = %iterlim% ;
-option reslim     = 99999     ;
-option solprint   = on        ;
-option limrow     = 0         ;
-option limcol     = 0         ;
+option sysout         = on        ;
+option solprint       = on        ;
+option iterlim        = %iterlim% ;
+option reslim         = 99999     ;
+option solprint       = on        ;
+option limrow         = 0         ;
+option limcol         = 0         ;
+option holdFixedAsync = 1         ; 
+
 
 * prints solution listing when asynchronous solve (Grid/Threads) is used
-$if set debug option AsyncSolLst = 1;
-
+$if set only_solve option AsyncSolLst = 1;
 
 ##  LAUNCH SOLVER
 #_________________________________________________________________________

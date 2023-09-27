@@ -18,6 +18,8 @@ $setglobal cutoff 'median'
 * | simple | full |
 $setglobal  omega_eq 'simple'
 
+* Given the Dell extreme impact functions, use a damage cap by default
+$setglobal damage_cap
 
 ## INCLUDE DATA
 #_________________________________________________________________________
@@ -93,7 +95,7 @@ $elseif.ph %phase%=='compute_vars'
 ##  STABILITY CONSTRAINTS ------------------------------
 * to avoid errors/help the solver to converge
 DJOIMPACT.lo(t,n) = (-1 + 1e-5) ; # needed because of eq_omega
-
+DJOIMPACT.fx(tfirst,n) = 0;
 
 #=========================================================================
 *   ///////////////////////     OPTIMIZATION    ///////////////////////
@@ -113,7 +115,7 @@ $elseif.ph %phase%=='eqs'
 
 ##  DJO'S IMPACT --------------------------------------
 * DJO's yearly local impact
- eq_djoimpact(t,n)$(reg(n))..  DJOIMPACT(t,n)  =E=  beta_djo('T',n,t) * (TEMP_REGION_DAM(t,n)-climate_region_coef('base_temp', n))  ;             
+ eq_djoimpact(t,n)$(reg(n) and not tfirst(t))..  DJOIMPACT(t,n)  =E=  beta_djo('T',n,t) * (TEMP_REGION_DAM(t,n)-climate_region_coef('base_temp',n))  ;             
 
 # OMEGA FULL
 $ifthen.omg %omega_eq% == 'full'
@@ -122,14 +124,14 @@ $ifthen.omg %omega_eq% == 'full'
                                                                             #  TFP factor
                                                                             *  (tfp(t+1,n)/tfp(t,n))
                                                                             #  Pop factor
-                                                                            *  ((( pop(t+1,n)/1000  )/( pop(t,n)/1000 ))**(1-gama)) * (pop(t,n)/pop(t+1,n))
+                                                                            *  ((( pop(t+1,n)/1000  )/( pop(t,n)/1000 ))**prodshare('labour',n)) * (pop(t,n)/pop(t+1,n))
                                                                             #  Capital-Omega factor
                                                                             *  KOMEGA(t,n)
                                                                             #  BHM impact on pc-growth
                                                                             /  ((1 + basegrowthcap(t,n) +  DJOIMPACT(t,n)   )**tstep)
                                                                         ) - 1  ;
 * Capital-Omega factor
- eq_komega(t,n)$(reg(n))..  KOMEGA(t,n)  =E=  ( (((1-dk)**tstep) * K(t,n)  +  tstep * S(t,n) * tfp(t,n) * (K(t,n)**gama) * ((pop(t,n)/1000)**(1-gama)) * (1/(1+OMEGA(t,n))) ) / K(t,n) )**gama  ;
+ eq_komega(t,n)$(reg(n))..  KOMEGA(t,n)  =E=  ( (((1-dk)**tstep) * K(t,n)  +  tstep * S(t,n) * tfp(t,n) * (K(t,n)**prodshare('capital',n)) * ((pop(t,n)/1000)**prodshare('labour',n)) * (1/(1+OMEGA(t,n))) ) / K(t,n) )**prodshare('capital',n)  ;
 # OMEGA SIMPLE
 $else.omg
 * Omega-simple formulation

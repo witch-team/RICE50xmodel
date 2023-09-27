@@ -4,3 +4,21 @@ v1.0.0
 
 v1.5.0
   - Second open-source release
+
+v2.0.0
+  - New features and modules
+    - mod_srm described in Pezzoli et al. (2023)
+    - mod_inequality described in Emmerling et al. (2024)
+    - mod_dac described in Andreoni et al. (2023)
+    - mod_natural_capital described in Bastien-Olvera et al. (2023)
+    - Impact functions added based on van der Wijst et al. (2023)
+    - Climate downscaling at the country and spatial level based on CMIP6 downscaling
+    - Country-level version (--n=maxiso3 with 160 countries) implemented
+  - General improvements and updates
+    - Baseline GDP and emissions updated to updated SSPs based on Koch and Leimbach (2023, Ecological Economics)
+    - Impact functions updated and improved
+    - Additional policy options (regional carbon budgets, carbon taxes, ...)
+    - Data now included in the main repository and tracked through Git LFS
+    - Database creation to report results in the standard IAMC format and for IIASAdb uploads
+    - General cleaning and improved debugging and reporting methods
+  

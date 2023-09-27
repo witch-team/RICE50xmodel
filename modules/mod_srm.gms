@@ -7,9 +7,13 @@
 $ifthen.ph %phase%=='conf'
 
 *Period in which SRM becomes available
-$setglobal geoeng_start 2050
+$setglobal geoeng_start 2035
 *if only one region is allowed to implement SRM
-$setglobal only_region nde
+*$setglobal only_region nde
+
+*multiple SRM regions can be activated with the flag 
+*setglobal multiple_regions filename_where_regions_are_listed
+
 *maximum amount of SRM per region (in MtS)
 $setglobal maxsrm 2
 
@@ -17,12 +21,23 @@ $setglobal maxsrm 2
 $setglobal damage_geoeng
 $setglobal impsrm_exponent 2 #exponent of damage function
 $setglobal damage_geoeng_amount 0.03
-
+*$setglobal srm_ub data_geoeng_upperbound #flag for setting an exogenous upper bound on srm
 
 *------------------------------------------------------------------------
 $elseif.ph %phase%=='sets'
 
 set srm_available(t, n) 'periods and regions where SRM is available and used';
+
+$ifthen.multiregion set multiple_regions
+set n_active(n) 'Regions where srm can be used' /
+$include %datapath%%multiple_regions%.inc
+/;
+$endif.multiregion
+
+$ifthen.coal set onlysrmcoalition
+set n_active(n);
+$setglobal swf bge_regional
+$endif.coal
 
 *------------------------------------------------------------------------
 $elseif.ph %phase%=='include_data'
@@ -50,6 +65,15 @@ parameter wsrm(t)     'World SRM SO2 injections';
 parameter damage_geoeng_amount(n);
 damage_geoeng_amount(n) = %damage_geoeng_amount%;
 
+$ifthen.ub set srm_ub
+parameter geoeng_ub(t,n)    'upper bound for SRM for convergence';
+$gdxin '%datapath%%srm_ub%.gdx'
+$load   geoeng_ub=geoeng_upperbound
+$gdxin
+$endif.ub
+
+$if set all_data_temp parameter srm_iter(t,n,iter);
+
 
 *------------------------------------------------------------------------
 $elseif.ph %phase%=='compute_data'
@@ -66,7 +90,7 @@ SRM.l(t,n)=0;
 $ifthen.rnd set randomsrminit
 execseed = 1 + gmillisec(jnow);
 parameter srm_init(n);
-srm_init(n) = Uniform(0,0.5)
+srm_init(n) = Uniform(0,0.5);
 SRM.l(t,n) = srm_init(n);
 $endif.rnd
 $if set init_region SRM.l(t,'%init_region%')=2;
@@ -85,10 +109,20 @@ SRM.lo(t, n) = 0;
 
 *determine by whom and when SRM is admissible
 *only after 2050
-srm_available(t,n)$(year(t) ge %geoeng_start%) = YES;
-*now define that Geoengineering is only admissible in branch_1 and only for the USA:
-*srm_available(t,n)$(not sameas(n, 'usa')) = NO;
+srm_available(t,n)$(year(t) ge %geoeng_start% and year(t) le 2250) = YES;
+
+* only one region
 $if set only_region srm_available(t,n)$(not sameas(n, '%only_region%')) = NO;
+* multiple regions
+$if set multiple_regions  srm_available(t,n)$(not n_active(n)) = NO;
+
+* COALITIONS
+*$set global onlysrmcoalition
+$ifthen.coal set onlysrmcoalition
+n_active(n) = yes$map_clt_n('srm_coalition',n);
+srm_available(t,n)$(not n_active(n)) = NO;
+$endif.coal
+
 
 * To start with, no Geoengineering possible
 SRM.fx(t, n)$(not srm_available(t,n))=0;
@@ -98,6 +132,7 @@ SRM.l(t, n)$(not srm_available(t,n))=0;
 *everyone can do it (or limited Geoengineering to x<1 Tg per year)
 SRM.up(t, n)$(srm_available(t,n))=%maxsrm%;
 
+$if set srm_ub SRM.up(t,n)$(srm_available(t,n))=geoeng_ub(t,n);
 
 
 * recompute climate and damages based on the new W_SRM.l
@@ -111,7 +146,6 @@ $elseif.ph %phase%=='eql'
 * List of equations
 eq_srm_cost
 eqw_srm
-
 *------------------------------------------------------------------------------
 $elseif.ph %phase%=='eqs'
 
@@ -125,8 +159,12 @@ eqw_srm(t,n)$(reg(n))..
 
 *------------------------------------------------------------------------
 $elseif.ph %phase%=='before_solve'
-
+$if set dynamic_up SRM.up(t, n)$(srm_available(t,n))=%maxsrm%*(1-exp(-%dynamic_up%*ord(iter)));
 wsrm(t) = sum(n, SRM.l(t,n));
+*------------------------------------------------------------------------
+$elseif.ph %phase%=='after_solve'
+* Debug option, will store all the iteration in the parameter srm_iter
+$if set all_data_temp srm_iter(t,n,iter) = SRM.l(t,n);
 *------------------------------------------------------------------------
 $elseif.ph %phase%=='after_nashloop'
 * In the phase AFTER_NASHLOOP, you compute parameters needed for the report, once the job is ready.

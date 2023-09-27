@@ -28,8 +28,9 @@ PARAMETERS
 
 * Historical EMISSIONS
 PARAMETER q_emi_valid_primap(*,yearlu,n)  'Historical Emissions per each region [GtC]';
+PARAMETER q_emi_valid_oscar(*,yearlu,n)  'Historical Emissions per each region [GtC]';
 $gdxin  '%datapath%data_historical_values'
-$load   q_emi_valid_primap
+$load   q_emi_valid_primap q_emi_valid_oscar
 $gdxin
 
 
@@ -38,7 +39,7 @@ $gdxin
 $elseif.ph %phase%=='compute_data'
 
 * starting value averaged over last 10 year ( to minimize risk of high fluctuations)
-eland0(n)  = CtoCO2 * sum(yearlu, q_emi_valid_primap('co2lu',yearlu,n)$((yearlu.val ge 2005) and (yearlu.val lt 2015))) / 10  ;
+eland0(n)  = CtoCO2 * sum(yearlu, q_emi_valid_oscar('co2lu',yearlu,n)$((yearlu.val ge 2005) and (yearlu.val lt 2015))) / 10  ;
 
 loop(t,
 * UNIFORM LOGIC

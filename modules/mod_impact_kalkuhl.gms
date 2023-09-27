@@ -10,10 +10,6 @@
 #_________________________________________________________________________
 $ifthen.ph %phase%=='conf'
 
-* Burke alternatives: | sr | lr | srdiff | lrdiff
-$setglobal bhm_spec 'sr'
-
-
 # OMEGA EQUATION DEFINITION
 * | simple | full |
 $setglobal  omega_eq 'simple'
@@ -37,15 +33,6 @@ PARAMETERS
 #_________________________________________________________________________
 $elseif.ph %phase%=='compute_data'
 
-## MEDIAN CUTOFF EVALUATION ----------------------------
-#...........................................................................
-# Not trivial in GAMS,
-# ranking code inspired by solution here:
-# https://support.gams.com/gams:compute_the_median_of_a_parameter_s_values
-#...........................................................................
-
-
-
 
 ##  DECLARE VARIABLES
 #_________________________________________________________________________
@@ -62,9 +49,6 @@ KOMEGA.lo(t,n) = 0;
 BIMPACT.l(t,n) = 0 ;
 KOMEGA.l(t,n) = 1 ;
 
-#since requires lags fixed first period
-BIMPACT.fx('1',n) = 0 ;
-
 ##  COMPUTE VARIABLES
 #_________________________________________________________________________
 $elseif.ph %phase%=='compute_vars'
@@ -73,7 +57,10 @@ $elseif.ph %phase%=='compute_vars'
 * to avoid errors/help the solver to converge
 BIMPACT.lo(t,n) = (-1 + 1e-6) ; # needed because of eq_omega
 
-
+#since requires lags fixed first period
+#BIMPACT.fx('1',n)  =  (kw_DT+kw_DT_lag) * ((TEMP_REGION_DAM_INCPAST.l('1',n) - TEMP_REGION_DAM_INCPAST.l('0',n)) / tlen('1') )
+#+   (kw_TDT+kw_TDT_lag) * (( TEMP_REGION_DAM_INCPAST.l('1',n) - TEMP_REGION_DAM_INCPAST.l('0',n) ) / tlen('1'))  * ( 2*(TEMP_REGION_DAM_INCPAST.l('1',n)-TEMP_REGION_DAM_INCPAST.l('0',n)) + 5 *(TEMP_REGION_DAM_INCPAST.l('0',n)) );
+BIMPACT.fx(t,n)$(year(t) le 2020) = 0;
 #=========================================================================
 *   ///////////////////////     OPTIMIZATION    ///////////////////////
 #=========================================================================
@@ -93,12 +80,12 @@ $elseif.ph %phase%=='eqs'
 
 ##  BURKE'S IMPACT --------------------------------------
 * BHM's yearly local impact
- eq_bimpact(t,n)$(reg(n) and ord(t) gt 1)..  BIMPACT(t,n)  =E=  (kw_DT+kw_DT_lag) * ((TEMP_REGION_DAM(t,n)-TEMP_REGION_DAM(t-1,n))/tlen(t))
-                                            +   (kw_TDT+kw_TDT_lag) * ((TEMP_REGION_DAM(t,n)-TEMP_REGION_DAM(t-1,n))/tlen(t)) * TEMP_REGION_DAM(t-1,n)
-#                                            -   (kw_DT+kw_DT_lag) * (TEMP_REGION_DAM(t,n)-TEMP_REGION_DAM(t-1,n))
-#                                            -   (kw_TDT+kw_TDT_lag) * (TEMP_REGION_DAM(t,n)-TEMP_REGION_DAM(t-1,n)) * TEMP_REGION_DAM(t-1,n)
+# eq_bimpact(t,n)$(reg(n) and ord(t) gt 1)..  BIMPACT(t,n)  =E=  (kw_DT+kw_DT_lag) * ((TEMP_REGION_DAM(t,n)-TEMP_REGION_DAM(t-1,n))/tlen(t))
+#                                            +   (kw_TDT+kw_TDT_lag) * ((TEMP_REGION_DAM(t,n)-TEMP_REGION_DAM(t-1,n))/tlen(t)) * TEMP_REGION_DAM(t-1,n);
+  eq_bimpact(t,n)$(reg(n) and ord(t) gt 2)..  BIMPACT(t,n)  =E=  (kw_DT+kw_DT_lag) * ((TEMP_REGION_DAM(t,n)-TEMP_REGION_DAM(t-1,n)))
+                                            +   (kw_TDT+kw_TDT_lag) *(TEMP_REGION_DAM(t,n)-TEMP_REGION_DAM(t-1,n))/tlen(t) * ( 2*(TEMP_REGION_DAM(t,n)-TEMP_REGION_DAM(t-1,n)) + 5 *(TEMP_REGION_DAM(t-1,n)) )
+#
 ;
-
 # OMEGA FULL
 $ifthen.omg %omega_eq% == 'full'
 * Omega full formulation
@@ -106,7 +93,7 @@ $ifthen.omg %omega_eq% == 'full'
                                                                             #  TFP factor
                                                                             *  (tfp(t+1,n)/tfp(t,n))
                                                                             #  Pop factor
-                                                                            *  ((( pop(t+1,n)/1000  )/( pop(t,n)/1000 ))**(1-gama)) * (pop(t,n)/pop(t+1,n))
+                                                                            *  ((( pop(t+1,n)/1000  )/( pop(t,n)/1000 ))**prodshare('labour',n)) * (pop(t,n)/pop(t+1,n))
                                                                             #  Capital-Omega factor
                                                                             *  KOMEGA(t,n)
                                                                             #  BHM impact on pc-growth
@@ -114,11 +101,12 @@ $ifthen.omg %omega_eq% == 'full'
                                                                         ) - 1  ;
 
 * Capital-Omega factor
- eq_komega(t,n)$(reg(n))..  KOMEGA(t,n)  =E=  ( (((1-dk)**tstep) * K(t,n)  +  tstep * S(t,n) * tfp(t,n) * (K(t,n)**gama) * ((pop(t,n)/1000)**(1-gama)) * (1/(1+OMEGA(t,n))) ) / K(t,n) )**gama  ;
+ eq_komega(t,n)$(reg(n))..  KOMEGA(t,n)  =E=  ( (((1-dk)**tstep) * K(t,n)  +  tstep * S(t,n) * tfp(t,n) * (K(t,n)**prodshare('capital',n)) * ((pop(t,n)/1000)**prodshare('labour',n)) * (1/(1+OMEGA(t,n))) ) / K(t,n) )**prodshare('capital',n)  ;
 # OMEGA SIMPLE
 $else.omg
 * Omega-simple formulation
- eq_omega(t,n)$(reg(n)  and not tlast(t))..  OMEGA(t+1,n)  =E=  (  (1 + (OMEGA(t,n))) / ((1 + BIMPACT(t,n))**tstep)  ) - 1  ;
+# eq_omega(t,n)$(reg(n)  and not tlast(t))..  OMEGA(t+1,n)  =E=  (  (1 + (OMEGA(t,n))) / ((1 + BIMPACT(t,n))**tstep)  ) - 1  ;
+  eq_omega(t,n)$(reg(n)  and not tlast(t))..  OMEGA(t+1,n)  =E=  1/(BIMPACT(t+1,n)+1/(1+OMEGA(t,n)))-1 ;
 $endif.omg
 
 

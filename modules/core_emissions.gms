@@ -105,7 +105,7 @@ SCALAR
 PARAMETERS
     ssp_emi_bau(ssp,t,n)   'SSP-Decline rate of decarbonization according to different scenarios (per period)'
     emi_bau_co2(t,n)       "Baseline regional CO2 FFI emissions [GtCO2]"
-    sigma(t,n)                  'Decline rate of decarbonization (per period)'
+    sigma(t,n)                  'Carbon intensity of GDP [kgCO2 per USD(2005)]'
     sig0(n)                     'Carbon intensity at starting time [kgCO2 per output 2005 USD]'
 ;
 
@@ -114,9 +114,6 @@ $load   ssp_emi_bau=emi_bau_calibrated
 $gdxin
 * Configuration settings determine imported scenario
 emi_bau_co2(t,n) = ssp_emi_bau('%baseline%',t,n)  ;
-
-
-
 
 
 
@@ -134,8 +131,14 @@ sig0(n)    = sigma('1',n)    ;
 * Initial emissions
 e0(n) = q0(n) * sig0(n);
 
-
 $if %baseline%=='ssp5' fosslim=10000;
+
+$if set noneg max_miu=1;
+
+*following challenges to mitigation criterium
+$if %residual_emissions%=='low' max_miu=1; 
+$if %residual_emissions%=='medium' max_miu=0.975; 
+$if %residual_emissions%=='high' max_miu=0.925; 
 
 ##  DECLARE VARIABLES
 #_________________________________________________________________________
@@ -268,7 +271,9 @@ $elseif.ph %phase%=='eqs'
  eq_eind(t,n)$(reg(n))..   EIND(t,n)  =E=  sigma(t,n) * YGROSS(t,n) * (1-(MIU(t,n)))  ;
 
 * All emissions
- eq_e(t,n)$(reg(n))..   E(t,n)  =E=  EIND(t,n) + ELAND(t,n);
+ eq_e(t,n)$(reg(n))..   E(t,n)  =E=  EIND(t,n) + ELAND(t,n) 
+$if set mod_dac                      - E_NEG(t,n)
+;
 
 * Industrial cumulated emissions in Carbon
  eq_ccaeind(t+1)..   CCAEIND(t+1)  =E=  CCAEIND(t) # All industrial emi per period in Carbon
@@ -334,19 +339,6 @@ tfixvar(MIU,'(t,n)')
 ##  BEFORE SOLVE
 #_________________________________________________________________________
 $elseif.ph %phase%=='before_solve'
-
-$ontext
-loop((t,n)$(ctax(t,n) and (MIU.lo(t,n) lt MIU.up(t,n))),
-    MIU.lo(t,n) = max(0, min(1 - (0.90*(YNET.l(t,n)-ABATECOST.l(t,n))/ctax(t,n) + EIND.l(t,n))/(sigma(t,n)*YGROSS.l(t,n)), MIU.up(t,n)));
-    MIU.l(t,n) = (MIU.lo(t,n) + MIU.up(t,n))/2;
-    EIND.l(t,n) = sigma(t,n)*YGROSS.l(t,n)*(1-MIU.l(t,n));
-    ABATEDEMI.l(t,n) = sigma(t,n)*YGROSS.l(t,n)*MIU.l(t,n);
-);
-$offtext
-
-##  PROBLEMATIC REGIONS
-#_________________________________________________________________________
-$elseif.ph %phase%=='problematic_regions'
 
 
 #===============================================================================

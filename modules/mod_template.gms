@@ -51,7 +51,6 @@ $elseif.ph %phase%=='declare_vars'
 ##  COMPUTE VARIABLES
 #_________________________________________________________________________
 * In the phase COMPUTE_VARS, you fix starting points and bounds.
-* DO NOT put VAR.l here! (use the declare_vars phase) 
 $elseif.ph %phase%=='compute_vars'
 
 
@@ -89,15 +88,6 @@ $elseif.ph %phase%=='fix_variables'
 * variables, ...) inside the nash loop and right before solving the
 * model. This is typically done for externalities, spillovers, ...
 $elseif.ph %phase%=='before_solve'
-
-
-##  PROBLEMATIC REGIONS
-#_________________________________________________________________________
-* You enter this phase if any region is having difficulties in finding a solution.
-* Before running it serially, you may have provide some ad-hoc help. 
-$elseif.ph %phase%=='problematic_regions'
-
-
 
 ##  AFTER SOLVE
 #_________________________________________________________________________

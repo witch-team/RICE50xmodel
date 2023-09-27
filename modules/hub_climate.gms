@@ -38,15 +38,14 @@ $elseif.ph %phase%=='include_data'
 
 ##  PARAMETERS HARDCODED OR ASSIGNED ------------------- 
 PARAMETERS
-   tatm0    'Initial Atmospheric Temperature change [degree C from 1900]'   /0.85 / #DICE2013: 0.80    #DICE2016: 0.85
-   tocean0  'Initial Lower Stratum Temperature change [degree C from 1900]' /.0068/ #DICE2013: 0.0068  #DICE2016: 0.0068
+    tatm0    'Initial Atmospheric Temperature change [degree C from 1900]'   / 1.12 / #from WITCH bau
+   tocean0  'Initial Lower Stratum Temperature change [degree C from 1900]' / 0.109427/ #from WITCH bau
 ;
 
 
 ##  COMPUTE DATA
 #_________________________________________________________________________
 $elseif.ph %phase%=='compute_data'
-
 
 ##  DECLARE VARIABLES
 #_________________________________________________________________________
