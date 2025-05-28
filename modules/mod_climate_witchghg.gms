@@ -30,6 +30,8 @@ SET m  'Climate layers' /
 alias (m,mm);
 set mbox(m) /atm,upp,low/;    
 
+SET oghg(ghg) 'Other GHGs' /ch4, n2o/;
+
 ## INCLUDE DATA
 #_________________________________________________________________________
 $elseif.ph %phase%=='include_data'
@@ -37,11 +39,10 @@ $elseif.ph %phase%=='include_data'
 PARAMETERS
   wemi2qemi(ghg)    'Conversion factor W_EMI [GtC for CO2, Gt for others] into Q_EMI [GtonCeq]'
   wemi(ghg,t)       'World GHG emissions'
+  tocean0  'Initial Lower Stratum Temperature change [degree C from 1850-1900]' / 0.11/ 
 ;
 
 $gdxin '%datapath%data_mod_climate'
-PARAMETER emi_gwp(*)        'Global warming potential over a time horizon of 100 years (2007 IPCC AR4) [GTonCO2eq/GTon]';
-$load emi_gwp
 PARAMETER tempc(*)          'Temperature update coefficients';
 $load tempc
 PARAMETER rfc(ghg,*)        'Radiative forcing update coefficients';
@@ -63,9 +64,6 @@ PARAMETER cmdec1(*)         'Yearly retention factor for non-co2 gases';
 $loaddc cmdec1
 PARAMETER cmdec2(*)         'One period retention factor for non-co2 ghg';
 $loaddc cmdec2
-* Calibrate on average runs with WITCH given MAGICC outputs
-PARAMETER rfaerosols(t) 'Radiative forcing from others (aerosols indirect and direct effects, ozone)';
-$loaddc rfaerosols
 $gdxin
 
 
@@ -80,8 +78,8 @@ $elseif.ph %phase%=='compute_data'
 # the climate module, and emi_gwp is in [GTonCO2eq/GTon],
 # therefore we need to convert the emi_gwp as well
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-wemi2qemi(ghg)   =  emi_gwp(ghg) * CO2toC ;                                                                                                                           
-wemi2qemi('co2') =  1;
+wemi2qemi(ghg)   =  emi_gwp(ghg) * convq_ghg(ghg) / CO2toC;                                                                                                                           
+wemi2qemi('co2') =  1 / CO2toC;
 
 
 ##  DECLARE VARIABLES
@@ -89,19 +87,21 @@ wemi2qemi('co2') =  1;
 $elseif.ph %phase%=='declare_vars'
 
 VARIABLES
-   W_EMI(ghg,t)            'World emissions [GTonC/year]'
    WCUM_EMI(ghg,m,t)       'Global stock of GHG [GTon]'
-   RF(ghg,t)               'Radiative forcing [W/m2]'
 ;
 POSITIVE VARIABLES WCUM_EMI;
-
-* Stability in absence of startboost
-W_EMI.l('co2', t)$(not tfirst(t)) = sum(n, sigma(t,n)*ykali(t,n)) * tstep * CO2toC  ;
-
 
 ##  COMPUTE VARIABLES
 #_________________________________________________________________________
 $elseif.ph %phase%=='compute_vars'
+
+TATM.UP(t)         =  10     ;
+TATM.LO(t)         = -10     ;
+TATM.fx(tfirst)    = tatm0   ;
+
+TOCEAN.UP(t)       =  20     ;
+TOCEAN.LO(t)       = -1      ;
+TOCEAN.FX(tfirst)  = tocean0 ;
 
 # Stability for emissions
 W_EMI.up(ghg,t)   =  200 ;
@@ -124,12 +124,14 @@ RF.up(ghg,t) =  40;
 ##  EQUATION LIST
 #_________________________________________________________________________
 $elseif.ph %phase%=='eql'
-   eq_w_emi_co2        # world tstep co2-emissions
-   eq_w_emi_oghg       # world tstep oghg-emissions
+   eq_w_emi            # world tstep co2-emissions
    eq_wcum_emi_co2     # accumulation of Carbon in the atmosphere / upper box / deep oceans
    eq_wcum_emi_oghg    # accumulation of OGHG in the atmosphere
    eq_rf_co2           # CO2 radiative forcing 
    eq_rf_oghg          # OGHG radiative forcing
+   eq_forc             # total forcing
+   eq_tatm
+   eq_tocean
 
 
 ##  EQUATIONS
@@ -137,47 +139,41 @@ $elseif.ph %phase%=='eql'
 $elseif.ph %phase%=='eqs'
 
 * World CO2 emissions (in GTonC!) per 5-year block
- eq_w_emi_co2('co2',t)..   W_EMI('co2',t)  =E=  ( (sum(n$reg(n), E(t,n)) + sum(n$(not reg(n)), E.l(t,n)) )  * CO2toC  ) 
-                                            /   wemi2qemi('co2') 
-$if set mod_emission_pulse           + emission_pulse('co2',t)  
+ eq_w_emi(ghg,t)..   W_EMI(ghg,t)  =E=  ( (sum(n$reg(n), E(t,n,ghg)) + sum(n$(not reg(n)), E.l(t,n,ghg)) ) + natural_emissions(t,ghg) )
+                                            /   wemi2qemi(ghg) 
+$if set mod_emission_pulse           + emission_pulse(ghg,t)  
 ; # Carbon
 
-* World OGHG emissions (in GTonCeq!) per 5-year block
- eq_w_emi_oghg(oghg,t)..   W_EMI(oghg ,t)  =E=  ( (sum(n$reg(n), EOGHG(oghg,t,n)) + sum(n$(not reg(n)), EOGHG.l(oghg,t,n)) ) * CO2toC) 
-                                            /   wemi2qemi(oghg)  
-$if set mod_emission_pulse           + emission_pulse(oghg,t)  
-; # Carbon-eq
-
 * Accumulation of Carbon in the atmosphere / upper box / deep oceans
-eq_wcum_emi_co2(m,t+1)$mbox(m)..   WCUM_EMI('co2',m,t+1)  =E=  sum(mm, cmphi(mm,m) * WCUM_EMI('co2',mm,t))     # exchange transfer from previous values
-                                                   +   (tstep * W_EMI('co2',t))$(sameas(m,'atm'))  ;   # new emi-values added in atm level
+eq_wcum_emi_co2(m,t,tp1)$(pre(t,tp1) and mbox(m))..   WCUM_EMI('co2',m,tp1)  =E=  sum(mm, cmphi(mm,m) * WCUM_EMI('co2',mm,t))     # exchange transfer from previous values
+                                                      +   (tstep * W_EMI('co2',t))$(sameas(m,'atm'))  ;   # new emi-values added in atm level
 
 * Accumulation of OGHG in the atmosphere
-eq_wcum_emi_oghg(oghg,t+1)..   WCUM_EMI(oghg,'atm',t+1)  =E=  WCUM_EMI(oghg,'atm',t) * cmdec1(oghg)**tstep
-                                                          +   cmdec2(oghg) * (W_EMI(oghg,t) + W_EMI(oghg,t+1)) / 2
+eq_wcum_emi_oghg(oghg,t,tp1)$pre(t,tp1)..   WCUM_EMI(oghg,'atm',tp1)  =E=  WCUM_EMI(oghg,'atm',t) * cmdec1(oghg)**tstep
+                                                          +   cmdec2(oghg) * (W_EMI(oghg,t) + W_EMI(oghg,tp1)) / 2
                                                           +   (1-cmdec1(oghg)**tstep) * wcum_emi_eq(oghg)  ;
 
 * CO2 radiative forcing                    
 eq_rf_co2(t)..   RF('co2',t)   =E=  rfc('co2','alpha')*(log(WCUM_EMI('co2','atm',t))-log(rfc('co2','beta')))  ;
 
 * CH4, N2O, SLF and LLF radiative forcing
- eq_rf_oghg(oghg,t)..   RF(oghg,t)  =E=  rfc(oghg,'inter') * rfc(oghg,'fac')
+eq_rf_oghg(oghg,t)..   RF(oghg,t)  =E=  rfc(oghg,'inter') * rfc(oghg,'fac')
                                      *   (   ( rfc(oghg,'stm') * WCUM_EMI(oghg,'atm',t) )**rfc(oghg,'ex')  
                                            - ( rfc(oghg,'stm') * emi_preind(oghg)  )**rfc(oghg,'ex')
                                          );
 
 * Total radiative forcing
 eq_forc(t)..   FORC(t)  =E=  sum(ghg, RF(ghg,t)) + rfaerosols(t)
-$if set mod_srm + geoeng_forcing*(wsrm(t) + sum(nn$reg(nn), (SRM(t,nn) - SRM.l(t,nn))))
+$if set mod_sai $if "%sai_experiment%"=="g0" + geoeng_forcing * W_SAI(t)
 ;
 
 * Global temperature increase from pre-industrial levels                       
-eq_tatm(t+1)..   TATM(t+1)  =E=  TATM(t) +  tempc('sigma1')*( FORC(t)
+eq_tatm(t,tp1)$pre(t,tp1)..   TATM(tp1)  =E=  TATM(t) +  tempc('sigma1')*( FORC(t)
                                                                  -  tempc('lambda')* TATM(t)
                                                                  -  tempc('sigma2')*(TATM(t)-TOCEAN(t))  );
 
 * Ocean temperature                  
-eq_tocean(t+1)..   TOCEAN(t+1)  =E=  TOCEAN(t) + tempc('heat_ocean') * (TATM(t)-TOCEAN(t))   ;
+eq_tocean(t,tp1)$pre(t,tp1)..   TOCEAN(tp1)  =E=  TOCEAN(t) + tempc('heat_ocean') * (TATM(t)-TOCEAN(t))   ;
 
 ##  AFTER SOLVE
 #_________________________________________________________________________
@@ -191,45 +187,19 @@ $elseif.ph %phase%=='after_solve'
 # is called.
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-* World CO2 emissions (in GTonC!)      
-W_EMI.l('co2',t)  =  (sum(n E.l(t,n))  * CO2toC ) / wemi2qemi('co2') ; # Carbon
-$if set mod_emission_pulse           + emission_pulse('co2',t) 
-;
+W_EMI.fx(ghg,t) = W_EMI.l(ghg,t);
+$if set mod_sai $if "%sai_experiment%"=="g0" W_SAI.fx(t) = sum(n,N_SAI.l(t,n));
 
-* World OGHG emissions (in GTonCeq!)
-W_EMI.l(oghg ,t)  =  (sum(n, EOGHG.l(oghg,t,n)) * CO2toC )  / wemi2qemi(oghg) ; # Carbon-eq
-$if set mod_emission_pulse           + emission_pulse(oghg,t) 
-;
+solve witchghg using cns;
 
-* Accumulation of Carbon in the atmosphere / upper box / deep oceans
-WCUM_EMI.l('co2',m,t+1)  =  sum(mm, cmphi(mm,m) * WCUM_EMI.l('co2',mm,t))     # exchange transfer from previous values
-                         +   (tstep * W_EMI.l('co2',t))$(sameas(m,'atm'))  ;  # new emi-values added in atm level
+* unconstrain w_emi
+W_EMI.lo(ghg,t) = -inf;
+W_EMI.up(ghg,t) = inf;
 
-* Accumulation of OGHG in the atmosphere
-WCUM_EMI.l(oghg,'atm',t+1)  =  WCUM_EMI.l(oghg,'atm',t) * cmdec1(oghg)**tstep
-                            +   cmdec2(oghg) * (W_EMI.l(oghg,t)+W_EMI.l(oghg,t+1))/2
-                            +   (1-cmdec1(oghg)**tstep) * wcum_emi_eq(oghg)  ;
+$if set mod_sai $if "%sai_experiment%"=="g0" W_SAI.lo(t) = 0;
+$if set mod_sai $if "%sai_experiment%"=="g0" W_SAI.up(t) = +inf;
 
-* CO2 radiative forcing                    
-RF.l('co2',t)  =  rfc('co2','alpha')*( log(WCUM_EMI.l('co2','atm',t)) - log(rfc('co2','beta')));
-
-* CH4, N2O, SLF and LLF radiative forcing
-RF.l(oghg,t)  =  rfc(oghg,'inter') * rfc(oghg,'fac')
-              *   (   (rfc(oghg,'stm') * WCUM_EMI.l(oghg,'atm',t))**rfc(oghg,'ex')  
-                    - (rfc(oghg,'stm') * emi_preind(oghg))**rfc(oghg,'ex')            );
-
-* Total radiative forcing
-FORC.l(t)  =  sum(ghg, RF.l(ghg,t)) + rfaerosols(t)  ;
-$if set mod_srm +geoeng_forcing*W_SRM.l(t,n)
-;
-
-* Global temperature increase from pre-industrial levels                       
-TATM.l(t+1)  =  TATM.l(t) +  tempc('sigma1')*( FORC.l(t)
-                                                -  tempc('lambda')* TATM.l(t)
-                                                -  tempc('sigma2')*(TATM.l(t)-TOCEAN.l(t))  );
-* Ocean temperature                  
-TOCEAN.l(t+1)  =  TOCEAN.l(t) + tempc('heat_ocean')*(TATM.l(t)-TOCEAN.l(t))  ;
-
+viter(iter,'TATM',t,n)$nsolve(n) = TATM.l(t);  # Keep track of last temperature values
 
 #===============================================================================
 *     ///////////////////////     REPORTING     ///////////////////////
@@ -240,11 +210,11 @@ TOCEAN.l(t+1)  =  TOCEAN.l(t) + tempc('heat_ocean')*(TATM.l(t)-TOCEAN.l(t))  ;
 $elseif.ph %phase%=='gdx_items'
 
 # parameters
-forcoth
 
 # variables
 W_EMI
 WCUM_EMI
+FORC
 RF
 
 

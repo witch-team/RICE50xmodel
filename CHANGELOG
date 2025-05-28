@@ -1,11 +1,11 @@
 
-v1.0.0
+v1.0.0 (March 2021)
   - First open-source release
 
-v1.5.0
+v1.5.0 (January 2022)
   - Second open-source release
 
-v2.0.0
+v2.0.0 (September 2023)
   - New features and modules
     - mod_srm described in Pezzoli et al. (2023)
     - mod_inequality described in Emmerling et al. (2024)
@@ -22,3 +22,18 @@ v2.0.0
     - Database creation to report results in the standard IAMC format and for IIASAdb uploads
     - General cleaning and improved debugging and reporting methods
   
+    v2.5.0 (May 2025):
+    - New features and modules:
+      - Decile-based impact function based on Gilli et al. (2024)
+      - Stochastic programming code
+      - Non-CO2 gases
+      - FAIR coupling
+      - mod_oceans added (Bastien-Olvera et al., 2025)
+      - mod_emission_pulse to compute the Social Cost of Carbon
+      - mod_sai for Stratospheric Aerosol Injection
+      - Land Use emissions based on GLOBIOM https://github.com/iiasa/GLOBIOM-G4M_LookupTable (Frank et al., 2021, DOI: 10.1088/1748-9326/abc58a)
+      - long_term_pledges policy option based on the Net Zero Tracker / Climate Action Tracker (2.1 degrees by 2100)
+    - General improvements and updates
+      - Production function and savings calibration to country-level data
+      - New ENERDATA curves and ed58 as standard region aggregation
+      - Improved adaptation module

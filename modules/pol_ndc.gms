@@ -14,13 +14,13 @@
 $ifthen.ph %phase%=='conf'
 
 * NDCs extrapolation: | no | const | linear | hotelling |
+$setglobal ndcs_bound ".fx" # .fx fixes the NDCs, .lo sets a lower bound
 $setglobal ndcs_extr "linear"
-
-$setglobal nameout "%baseline%_ndc%ndcs_type%_%cooperation%_extr%ndcs_extr%"
-$setglobal output_filename results_%nameout%
 
 *MIU is fixed up to 2030, by default other policies start in 2035
 $setglobal ctax_start 2035
+
+$setglobal tax_oghg_as_co2
 
 ## SETS
 #_________________________________________________________________________
@@ -39,8 +39,8 @@ Set tmiufix(t) "Time periods of fixed mitigation levels" /1,2,3,4/;
 *                 - this is the only phase where we should have numbers...
 $elseif.ph %phase%=='include_data'
 
-parameter cprice_hotel(t,n);
-cprice_hotel(t,n)=0;
+parameter cprice_hotel(t,n,ghg);
+cprice_hotel(t,n,ghg)=0;
 
 ##  COMPUTE VARIABLES
 #_________________________________________________________________________
@@ -48,9 +48,9 @@ cprice_hotel(t,n)=0;
 * DO NOT put VAR.l here! (use the declare_vars phase) 
 $elseif.ph %phase%=='compute_vars'
 
-$if %policy%=="bau" MIU.lo(t,n)$(not tmiufix(t))=0; MIU.up(t,n)$(not tmiufix(t))=max_miu; #undo MIU fix to allow for NDCs continuation
-MIU.fx(t,n)$tmiufix(t) = miu_fixed_levels(t,n); # Fixing mitigation variable in 2015-2030 period; .lo if NDCs are meant as a minumum mitigation effort
-CPRICE.lo(t,n)$tmiufix(t) = mx(t,n)* ((ax_co2('%maccfit%','Total_CO2',t,n)*MIU.lo(t,n)) + (bx_co2('%maccfit%','Total_CO2',t,n)*power(MIU.lo(t,n),4))); #needed for recomputation of ctax_corrected
+$if %policy%=="bau" MIU.lo(t,n,ghg)$(not tmiufix(t))=0; MIU.up(t,n,ghg)$(not tmiufix(t))=1; #undo MIU fix to allow for NDCs continuation
+MIU%ndcs_bound%(t,n,ghg)$tmiufix(t) = miu_fixed(t,n,ghg); # Fixing mitigation variable in 2015-2030 period; .lo if NDCs are meant as a minumum mitigation effort
+MAC.lo(t,n,ghg)$tmiufix(t) = sum(coef$coefact(coef,ghg), macc_coef(t,n,ghg,coef)*power(MIU.lo(t,n,ghg),(coefn(coef)))); #needed for recomputation of ctax_corrected
 
 ##  BEFORE SOLVE
 #_________________________________________________________________________
@@ -61,32 +61,31 @@ $elseif.ph %phase%=='before_solve'
 
 $ifthen.ndc %ndcs_extr%=="const"
 
-CPRICE.lo(t,n)$(year(t) gt 2030) =  min(CPRICE.l('4',n), mx(t,n)* ((ax_co2('%maccfit%','Total_CO2',t,n)*MIU.up(t,n)) + (bx_co2('%maccfit%','Total_CO2',t,n)*power(MIU.up(t,n),4))) );
+MAC.lo(t,n,ghg)$(year(t) gt 2030) =  min(MAC.lo('4',n,ghg), cprice_max(t,n,ghg) );
 
 $elseif.ndc %ndcs_extr%=="linear"
 
-CPRICE.lo(t,n)$(year(t) gt 2030 and CPRICE.l('2',n) ne 0) =  min(CPRICE.l('4',n) * (1 + (CPRICE.l('4',n) - CPRICE.l('2',n))/(CPRICE.l('4',n)*tstep*2) * (year(t) - 2030) ) , mx(t,n)* ((ax_co2('%maccfit%','Total_CO2',t,n)*MIU.up(t,n)) + (bx_co2('%maccfit%','Total_CO2',t,n)*power(MIU.up(t,n),4))) );
+MAC.lo(t,n,ghg)$(year(t) gt 2030 and MAC.l('4',n,ghg) ne 0) =  min(MAC.lo('4',n,ghg) * (1 + (MAC.lo('4',n,ghg) - MAC.lo('2',n,ghg))/(MAC.lo('4',n,ghg)*tstep*2) * (year(t) - 2030) ) , cprice_max(t,n,ghg) );
 
 $elseif.ndc %ndcs_extr%=="hotelling"
 
-cprice_hotel('4',n) = CPRICE.l('4',n);
-loop( (t,tt)$pre(tt,t),
-cprice_hotel(t,n)$(year(t) gt 2030)=cprice_hotel(tt,n) * (1 + prstp + elasmu * (ykali(t,n)-ykali(tt,n))/(tstep*ykali(tt,n)) ) ** tstep );
-CPRICE.lo(t,n)$(year(t) gt 2030) = min(cprice_hotel(t,n), mx(t,n)* ((ax_co2('%maccfit%','Total_CO2',t,n)*MIU.up(t,n)) + (bx_co2('%maccfit%','Total_CO2',t,n)*power(MIU.up(t,n),4))) );
+
+cprice_hotel('4',n,ghg) = MAC.lo('4',n,ghg);
+loop( (t,tt)$pre(tt,t), cprice_hotel(t,n,ghg)$(year(t) gt 2030)=cprice_hotel(tt,n,ghg) * (1 + prstp + elasmu * (ykali(t,n)-ykali(tt,n))/(tstep*ykali(tt,n)) ) ** tstep );
+MAC.lo(t,n,ghg)$(year(t) gt 2030) = min(cprice_hotel(t,n,ghg), cprice_max(t,n,ghg));
 
 $endif.ndc
 
 * Recompute ctax corrected to avoid inconsistencies with NDCs
-ctax_corrected(t,n) = max(CPRICE.lo(t,n), min(ctax(t,n)*1e3, 
-                            mx(t,n)* ((ax_co2('%maccfit%','Total_CO2',t,n)*MIU.up(t,n)) + (bx_co2('%maccfit%','Total_CO2',t,n)*power(MIU.up(t,n),4))) ) );
-
+ctax_corrected(t,n,ghg) = min(MAC.lo(t,n,ghg), cprice_max(t,n,ghg) );
+$if set tax_oghg_as_co2 ctax_corrected(t,n,ghg)$(not sameas(ghg,'co2')) = min( MAC.lo(t,n,'co2') * emi_gwp(ghg),  cprice_max(t,n,ghg) );
 
 ##  GDX ITEMS
 #_________________________________________________________________________
 * List the items to be kept in the final gdx
 $elseif.ph %phase%=='gdx_items'
 
-miu_fixed_levels
+miu_fixed
 miu_ndcs_2030
 
 $endif.ph

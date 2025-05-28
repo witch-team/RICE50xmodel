@@ -1,6 +1,6 @@
 *starting settings
 viter(iter,v,t,n) = 0;
-max_solution_change = %convergence_tolerance%;
+allerr(iter,v) = tolerance(v);
 converged = 0;
 
 scalar debug_readyCollect;
@@ -17,6 +17,8 @@ $if not set solvermode $setglobal solvermode nlp
 * continue looping unless "converged" becomes 1
 * If max_iterations number is reached, an abort command will interrupt the loop
 
+$if set debug_presolve execute_unload "debudg_presolve_%nameout%.gdx"; abort "Let's see what's wrong...";
+
 loop(iter$(not converged),
 
 * Reset collection loop
@@ -31,15 +33,19 @@ CO2.solvelink = %solvelink%; # Solving optios
                              # GAMS will generate model, submit to solver and then
                              # proceed in parallel without waiting for the solution.
 
-
 ** SUBMISSION LOOP
 *..................................................
 * Step 1: every coalition evaluates its best alone-solution
-$if set only_solve cltsolve(clt) = no; cltsolve('%only_solve%') = yes;
+$if set onlysolve cltsolve(clt) = no; cltsolve('%onlysolve%') = yes;
 loop(clt$(cltsolve(clt)), # only active coalitions
+
     reg(nn) = yes$map_clt_n(clt,nn);  # Set <reg> to one single region per loop and then
                                       # solve the model (every equation constrained by reg(n)
                                       # is executed only for reg-current regions )
+    reg_all(nn) = yes$reg(nn);           # by default, also equations constrained by reg_all are active only for the solving clt
+$if set see_other_climates reg_all(nn) = yes; #this options makes it as such that the other regions can see climate and damage related state variables.       
+                                           #decreases computational speed but increases feasibility.
+
     solve CO2 maximizing UTILITY using %solvermode%;
     h(clt) = CO2.handle;  # Model-attribute <handle> contains an unique identification for each submitted
                         # solution. The handle values stored in h(c) are then used to collect
@@ -74,7 +80,9 @@ repeat
 
         solrep(iter,clt,'solvestat') = CO2.solvestat;  # save solvestat  (1 is ok)
         solrep(iter,clt,'modelstat') = CO2.modelstat;  # save modelstat  (1 or 2 is optimal or locally opt)
-        solrep(iter,clt,'ok')        =  (not ((CO2.solvestat gt 1) or (CO2.modelstat gt 2)));
+        solrep(iter,clt,'feas')      =  ( (CO2.solvestat eq 1 or CO2.solvestat eq 4) and ((CO2.modelstat eq 1) or (CO2.modelstat eq 2) or (CO2.modelstat eq 7)));
+        solrep(iter,clt,'opt')       =  ( (CO2.solvestat eq 1) and ((CO2.modelstat eq 1) or (CO2.modelstat eq 2)));
+
 
 
 
@@ -85,8 +93,11 @@ repeat
 
 
         # :::::  CHECK IF ANY REGION HAS PROBLEM TO SOLVE  ::::: #
-
-        if((not solrep(iter,clt,'ok')),
+        # enter the serial loop if regions are infeasible OR not optimal but converged
+        if( (not solrep(iter,clt,'feas') or 
+                ( (ord(iter) ge %miniter%) and  
+                (sum(v$vcheck(v), allerr(iter,v) lt tolerance(v)) eq card(vcheck)) and 
+                not solrep(iter,clt,'opt')) ),
         # In <solrep> i have saved reference of any possible troubling region.
         # I can solve it serially to see if trouble can be overcome.
 
@@ -98,6 +109,9 @@ repeat
 
                     # Set solving region
                     reg(nn) = yes$map_clt_n(clt,nn);
+                    reg_all(nn) = yes$reg(nn);           # by default, also equations constrained by reg_all are active only for the solving clt
+$if set see_other_climates reg_all(nn) = yes; #this options makes it as such that the other regions can see climate and damage related state variables.       
+                                           #decreases computational speed but increases feasibility.
 
                     # Launch serially the model
                     solve CO2 maximizing UTILITY using %solvermode%;
@@ -135,19 +149,13 @@ until ((card(h) eq 0) or ((timeelapsed-timer) gt %max_seconds%));
 * it means that timeout has expired.
 abort$(card(h) gt 0) 'ERROR: TIME OUT, %max_seconds% seconds elapsed and not all solves are complete';
 
-* Re-run problematic regions (if any) serially
 if(card(clt_problem) gt 0,
+    execute_unload 'debug_%nameout%.gdx';
+    display 'The following regions have not been solved to feasibility:';
     display clt_problem;
-    CO2.solvelink = %solveLink.loadLibrary%;
-    loop(clt_problem(clt),
-        reg(nn) = yes$map_clt_n(clt,nn);
-        solve CO2 maximizing UTILITY using %solvermode%;
-    );
-    CO2.solvelink = %solvelink%;
+$if %abort_if_infeasible%=="yes"  abort 'ERROR: regions unable to be solved to feasibility';
+$if %abort_if_infeasible%=="no"   display 'CAREFUL: at this iteration, some regions were infeasible';
 
-    # save its result in a debug-output and terminate process
-    execute_unload 'debug_infeas.gdx';
-    abort 'ERROR: regions unable to be solved to optimality';
 );
 
 
@@ -155,35 +163,26 @@ if(card(clt_problem) gt 0,
 *                       CONVERGENCE RULE
 *===============================================================================
 
+* Update the model propagating all needed infos
+$batinclude "modules" "after_solve"
 
-viter(iter,'S',t,n)$nsolve(n)   = S.l(t,n);    # Keep track of last investment values
-viter(iter,'MIU',t,n)$nsolve(n) = MIU.l(t,n);  # Keep track of last mitigation values
-
-allerr(iter,v) = smax((t,n)$nsolve(n), abs(viter(iter,v,t,n)-viter(iter-1,v,t,n))); 
-
-
-* Evaluate distance measure for convergence
-* max_solution_change among all regions and all times between eiter(i,..) and eiter(i-1,..)
-max_solution_change$(ord(iter) gt 1) = smax(v$vcheck(v), allerr(iter,v));
-max_solution_change_iter(iter) = max_solution_change;
-*display max_solution_change;
-
+* consider relative change across iterations
+savediff(t,n,iter,v)$(vcheck(v))= abs(viter(iter,v,t,n)-viter(iter-1,v,t,n));
+allerr(iter,v) = smax((t,n)$(not t5last(t)), savediff(t,n,iter,v)); 
 
 ** Convergence rule:
-* this max_solution_change must be under a specific threshold
-* CONVERGENCE TOLERANCE could be set!
+* 1) all regions are optimal
+* 2) all variable variation is below tolerance
+* 3) iterations are below minimum
 converged$(
 $if %policy%=="cbudget_regional" $if %burden%=="cost_efficiency" ( abs(cbudget_2020_2100 - ctax_target_rhs) le %conv_budget%) and
-    (sum(cltsolve, solrep(iter,cltsolve,'ok')) eq card(cltsolve)) and 
-    (max_solution_change lt %convergence_tolerance%) and 
+    (sum(cltsolve, solrep(iter,cltsolve,'opt')) eq card(cltsolve)) and 
+    (sum(v$vcheck(v), allerr(iter,v) lt tolerance(v)) eq card(vcheck)) and 
     (ord(iter) ge %miniter%))
     = 1;
 
 ** Weights may change AFTER FIRST ITERATION
 $if %region_weights% == 'negishi' nweights(t,n)$((not converged)) = %calc_nweights%;
-
-* Update the model propagating all needed infos
-$batinclude "modules" "after_solve"
 
 * For every iteration dump current situation (even if not converged)
 $if set all_data_temp put_utility 'gdxout' / 'all_data_temp_%nameout%.gdx' ; execute_unload;
@@ -194,4 +193,5 @@ $if set all_data_temp put_utility 'gdxout' / 'all_data_temp_%nameout%.gdx' ; exe
 ** FAILURE
 *........................................................................
 * if still converged = 0
+execute_unload$(not converged) 'debug_%nameout%.gdx';
 abort$(not converged) 'Still not converged after all iterations';

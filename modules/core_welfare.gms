@@ -43,7 +43,7 @@ $setglobal dice_scale2   0      #DICE2013: -3855.106895   #DICE2016: -10993.704
 #_________________________________________________________________________
 $elseif.ph %phase%=='sets'
 
-$if %swf%=='disentangled' $if %region_weights%=='negishi' $abort 'Negishi weightes require dice welfare function (--swf=dice)'
+$if %swf%=='disentangled' $if %region_weights%=='negishi' $abort 'Negishi weights require dice welfare function (--swf=dice)';
 
 
 ## INCLUDE DATA
@@ -85,7 +85,7 @@ $elseif.ph %phase%=='compute_data'
 nweights(t,n) = 1;
 
 * Discount factor
- rr(t)  =  1 / ( (1+prstp)**(tstep*(t.val-1)) );
+rr(t)  =  1 / ( (1+prstp)**(tstep*(tperiod(t)-1)) );
 
 
 ##  DECLARE VARIABLES
@@ -132,15 +132,23 @@ $if not set alternative_utility eq_utility_arg(t,n)$(reg(n)).. UTARG(t,n) =E= CP
 
 * Disentangled welfare function (within coalitions, using inequality aversion basd on gamma)
 $ifthen.wf '%swf%'=='disentangled' #(DEFAULT)
-eq_util.. UTILITY  =E=  sum(t, ( ( ( (sum(n$reg(n),  pop(t,n)/sum(nn$reg(nn),pop(t,nn))*((UTARG(t,n))**(1-gamma))))**((1-elasmu)/(1-gamma))) / (1-elasmu) ) - 1 )  * rr(t) );
+eq_util.. UTILITY  =E=  sum(t, PROB.l(t) * ( ( ( (sum(n$reg(n),  pop(t,n)/sum(nn$reg(nn),pop(t,nn)) * ((UTARG(t,n))**(1-gamma))))**((1-elasmu)/(1-gamma))) / (1-elasmu) ) - 1 )  * rr(t) );
 
-$else.wf '%swf%'=='dice'
+$elseif.wf '%swf%'=='stochastic'
+
+eq_welfare(t).. TUTILITY(t)  =E=  sum(n$reg(n),  pop(t,n)/sum(nn$reg(nn),pop(t,nn))  *  ((UTARG(t,n))**(1-gamma))  );
+
+eq_util.. UTILITY  =E=  ( (sum(t$((tperiod(t) lt t_resolution_one)), rr(t)/sum(ttt,rr(ttt)*PROB.l(ttt)) * TUTILITY(t)**((1-elasmu)/(1-gamma)))) +
+          (sum(t$branch_node(t, 'branch_1'), rr(t)/sum(ttt,rr(ttt)*PROB.l(ttt)) * (sum(tt$(year(tt) eq year(t)), PROB.l(tt) * TUTILITY(tt)**((1-rra)/(1-gamma))) ) **((1-elasmu)/(1-rra))))
+          ) **(1/(1-elasmu))  * 1e6;
+
+$else.wf
 * Original DICE welfare function adapted to multiregion
 eq_cemutotper(t,n)$(reg(n))..  CEMUTOTPER(t,n)  =E=  PERIODU(t,n) * rr(t) * pop(t,n)  ;
 
 eq_periodu(t,n)$(reg(n))..  PERIODU(t,n)  =E=  ( (UTARG(t,n))**(1-elasmu) - 1)/(1-elasmu) - 1  ;
 
-eq_util..   UTILITY   =E=  (dice_scale1 * tstep * sum((t,n)$map_nt, nweights(t,n)*CEMUTOTPER(t,n) )) + dice_scale2  ;
+eq_util..   UTILITY   =E=  (dice_scale1 * tstep * sum((t,n)$map_nt, nweights(t,n) * PROB.l(t) * CEMUTOTPER(t,n) )) + dice_scale2  ;
 $endif.wf
 
 ##  AFTER SOLVE
@@ -148,8 +156,8 @@ $endif.wf
 $elseif.ph %phase%=='after_solve'
 
 #reporting some welfare measures (for regions, abstracting from inequality aversion)
-welfare_regional(n) = (sum(t, ( ( pop(t,n) * (UTARG.l(t,n)**(1-elasmu)) / (1-elasmu) ) )  * rr(t) ));
-welfare_bge(n) = ( welfare_regional(n) / (sum(t, ( ( pop(t,n) / (1-elasmu) ) )  * rr(t) )) )**(1/(1-elasmu));
+welfare_regional(n)$nsolve(n) = (sum(t, PROB.l(t) * ( ( pop(t,n) * (UTARG.l(t,n)**(1-elasmu)) / (1-elasmu) ) )  * rr(t) ));
+welfare_bge(n)$nsolve(n) = ( welfare_regional(n) / (sum(t, PROB.l(t) * ( ( pop(t,n) / (1-elasmu) ) )  * rr(t) )) )**(1/(1-elasmu));
 
 #===============================================================================
 *     ///////////////////////     REPORTING     ///////////////////////

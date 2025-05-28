@@ -24,12 +24,14 @@ $include %datapath%n.inc
 $include %datapath%regions.inc
 
 set   reg(n)     'Active regions to be solved' ;
+set   reg_all(n)     'Regional equations that are active also for non-solving coalition' ;
+
 alias(n,nn,nnn,nnnn);
 
 * Subset regulating how many countries to solve
 set nsolve(n)   'Which regions must be solved across n set';
-$if set only_solve nsolve(n) = yes$(sameas(n,'%only_solve%'));
-$if not set only_solve nsolve(n) = yes;
+$if set onlysolve nsolve(n) = yes$(sameas(n,'%onlysolve%'));
+$if not set onlysolve nsolve(n) = yes;
 
 * no limits for the moment
 reg(n) = yes;
@@ -56,7 +58,7 @@ SETS
 #_________________________________________________________________________
 $elseif.ph %phase%=='gdx_items'
 n
-
+eu
 
 $endif.ph
 

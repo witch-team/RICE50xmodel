@@ -244,14 +244,6 @@ tfixvar(E_STOR,'(t,n)')
 $elseif.ph %phase%=='before_solve'
 
 
-##  PROBLEMATIC REGIONS
-#_________________________________________________________________________
-* You enter this phase if any region is having difficulties in finding a solution.
-* Before running it serially, you may have provide some ad-hoc help. 
-$elseif.ph %phase%=='problematic_regions'
-
-
-
 ##  AFTER SOLVE
 #_________________________________________________________________________
 * In the phase AFTER_SOLVE, you compute what must be propagated across the 

@@ -42,8 +42,6 @@ PARAMETERS
 
 ##  PARAMETERS LOADED ----------------------------------
 $gdxin '%datapath%data_mod_climate'
-PARAMETER emi_gwp(*)        'Global warming potential over a time horizon of 100 years (2007 IPCC AR4) [GTonCO2eq/GTon]';
-$load emi_gwp
 PARAMETER tempc(*)          'Temperature update coefficients';
 $load tempc
 PARAMETER rfc(ghg,*)        'Radiative forcing update coefficients';
@@ -98,6 +96,7 @@ PARAMETERS
    wemi2qemi(ghg)    'Conversion factor W_EMI [GtC for CO2, Gt for others] into Q_EMI [GtonCeq]'
    wemi(ghg,t)       'World GHG emissions'
    forcoth(t)        'Exogenous forcing from other greenhouse gases'
+   tocean0  'Initial Lower Stratum Temperature change [degree C from 1850-1900]' / 0.11/ 
 ;
 
 
@@ -106,8 +105,8 @@ PARAMETERS
 $elseif.ph %phase%=='compute_data'
 
 * OGHG forcing exogenous
-forcoth(t) =  fex0 + (1/17) * (fex1-fex0) * (t.val-1)$(t.val lt 18)  # Linear interpolation from fex0 (t1) to fex1 (t17),
-           +  (fex1-fex0)$(t.val ge 18) ;                   # then (t > 17) level fixed to fex1
+forcoth(t) =  fex0 + (1/17) * (fex1-fex0) * (tperiod(t)-1)$(tperiod(t) lt 18)  # Linear interpolation from fex0 (t1) to fex1 (t17),
+           +  (fex1-fex0)$(tperiod(t) ge 18) ;                   # then (t > 17) level fixed to fex1
 
 #.......................................................
 # NOTE:
@@ -117,17 +116,15 @@ forcoth(t) =  fex0 + (1/17) * (fex1-fex0) * (t.val-1)$(t.val lt 18)  # Linear in
 # therefore we need to convert the emi_gwp as well
 #.......................................................
 
-wemi2qemi(ghg)   =  emi_gwp(ghg) * CO2toC ;
-wemi2qemi('co2') =  1;
+wemi2qemi(ghg)   = 1 / emi_gwp(ghg) * CO2toC ;
+wemi2qemi('co2') =  1 / CO2toC;
 
 ##  DECLARE VARIABLES
 #_________________________________________________________________________
 $elseif.ph %phase%=='declare_vars'
 
 VARIABLES
-   W_EMI(ghg,t)       'World emissions [GTonC/year]'
    WCUM_EMI(ghg,m,t)  'Global stock of GHG [GTon]'
-   RF(ghg,t)          'Radiative forcing [W/m2]'
    RFoth(t)           'Radiative forcing otherGHG as fraction of RFco2 [W/m2'
 ;
 POSITIVE VARIABLES WCUM_EMI;
@@ -136,8 +133,13 @@ POSITIVE VARIABLES WCUM_EMI;
 #_________________________________________________________________________
 $elseif.ph %phase%=='compute_vars'
 
-* Stability level in absence of startboost
-W_EMI.l('co2',t)$(not tfirst(t)) = sum(n, sigma(t,n)*ykali(t,n))   * CO2toC ;
+TATM.UP(t)         =  10     ;
+TATM.LO(t)         = -10     ;
+TATM.fx(tfirst)    = tatm0   ;
+
+TOCEAN.UP(t)       =  20     ;
+TOCEAN.LO(t)       = -1      ;
+TOCEAN.FX(tfirst)  = tocean0 ;
 
 # Stability for Emissions
 W_EMI.up(ghg,t)   =  200 ;
@@ -165,6 +167,9 @@ $elseif.ph %phase%=='eql'
    eq_wcum_emi_co2   # accumulation of Carbon in the atmosphere / upper box / deep oceans
    eq_rf_co2         # CO2 radiative forcing
    eq_rf_oghg        # OGHG radiative forcing
+   eq_forc         # Radiative Forcing equation
+   eq_tatm         # Temperature-climate equation for Atmosphere
+   eq_tocean       # Temperature-climate equation for Lower Oceans
 
 
 ##  EQUATIONS
@@ -173,14 +178,14 @@ $elseif.ph %phase%=='eqs'
 
 # WORLD EMISSIONS --------------------------------------
 * World CO2 emissions (in GTonC)
-eq_w_emi_co2(t)..   W_EMI('co2',t)  =E=  ( (sum(n$reg(n), E(t,n)) + sum(n$(not reg(n)), E.l(t,n)) ) * CO2toC  )
+eq_w_emi_co2(t)..   W_EMI('co2',t)  =E=  ( (sum(n$reg(n), E(t,n,'co2')) + sum(n$(not reg(n)), E.l(t,n,'co2')) )  )
                                      /   wemi2qemi('co2')  
 $if set mod_emission_pulse           + emission_pulse('co2',t)                                     
                                      ; # Carbon
 
 * Accumulation of CARBON in the atmosphere / upper box / deep oceans
-eq_wcum_emi_co2(m,t+1)$mbox(m)..   WCUM_EMI('co2',m,t+1)  =E=  sum(mm, cmphi(mm,m) * WCUM_EMI('co2',mm,t))     # exchange transfer in matrix from previous values
-                                                   +   (tstep * W_EMI('co2',t))$(sameas(m,'atm'))  ;   # + new emi-values added in atm level
+eq_wcum_emi_co2(m,t,tp1)$(pre(t,tp1) and mbox(m))..   WCUM_EMI('co2',m,tp1)  =E=  sum(mm, cmphi(mm,m) * WCUM_EMI('co2',mm,t))     # exchange transfer in matrix from previous values
+                                                      +   (tstep * W_EMI('co2',t))$(sameas(m,'atm'))  ;   # + new emi-values added in atm level
                                                                                                        # Carbon
 * CO2 radiative forcing
 eq_rf_co2(t)..   RF('co2',t)  =E=  rfc('co2','alpha')*(log(WCUM_EMI('co2','atm',t))-log(rfc('co2','beta')))  ;
@@ -189,17 +194,17 @@ eq_rf_co2(t)..   RF('co2',t)  =E=  rfc('co2','alpha')*(log(WCUM_EMI('co2','atm',
 eq_rf_oghg(t)..   RFoth(t)  =E=  oghg_coeff('intercept') + oghg_coeff('slope') * RF('co2',t)  ;
 
 * Total radiative forcing
-eq_forc(t)..   FORC(t)  =E=  RF('co2',t) + RFoth(t)  
-$if set mod_srm + geoeng_forcing*(wsrm(t) + sum(nn$reg(nn), (SRM(t,nn) - SRM.l(t,nn))))
+eq_forc(t)..   FORC(t)  =E=  RF('co2',t) + RFoth(t)
+$if set mod_sai $if "%sai_experiment%"=="g0" + geoeng_forcing * W_SAI(t)
 ;
 
 * Global temperature increase from pre-industrial levels
-eq_tatm(t+1)..   TATM(t+1)  =E=  TATM(t) +  tempc('sigma1')*(  FORC(t)
+eq_tatm(t,tp1)$pre(t,tp1)..   TATM(tp1)  =E=  TATM(t) +  tempc('sigma1')*(  FORC(t)
                                                                -  tempc('lambda')* TATM(t)
                                                                -  tempc('sigma2')*( TATM(t)-TOCEAN(t) )   );
 
 * Ocean temperature
-eq_tocean(t+1)..   TOCEAN(t+1)  =E= TOCEAN(t) + tempc('heat_ocean') * (TATM(t)-TOCEAN(t))  ;
+eq_tocean(t,tp1)$pre(t,tp1)..   TOCEAN(tp1)  =E= TOCEAN(t) + tempc('heat_ocean') * (TATM(t)-TOCEAN(t))  ;
 
 
 ##  AFTER SOLVE
@@ -214,33 +219,19 @@ $elseif.ph %phase%=='after_solve'
 # is called.
 #............................................................
 
-* World CO2 emissions (in GTonC!)
-W_EMI.l('co2',t)  =  (sum(n, E.l(t,n))  * CO2toC ) / wemi2qemi('co2') 
-$if set mod_emission_pulse           + emission_pulse('co2',t)   
-; #Carbon
+W_EMI.fx('co2',t) = W_EMI.l('co2',t);
+$if set mod_sai $if "%sai_experiment%"=="g0" W_SAI.fx(t) = sum(n,N_SAI.l(t,n));
 
-* Accumulation of Carbon in the atmosphere / upper box / deep oceans
-WCUM_EMI.l('co2',m,t+1)  =  sum(mm, cmphi(mm,m) * WCUM_EMI.l('co2',mm,t))    # exchange transfer in matrix from previous values
-                         +  (tstep * W_EMI.l('co2',t))$(sameas(m,'atm')) ;   # + new emi-values added in atm level
+solve witchco2 using cns;
 
-* CO2 radiative forcing
-RF.l('co2',t)  =  rfc('co2','alpha')*(log(WCUM_EMI.l('co2','atm',t)) - log(rfc('co2','beta')));
+* unconstrain w_emi
+W_EMI.lo('co2',t) = -inf;
+W_EMI.up('co2',t) = inf;
 
-* OGHG radiative forcing
-RFoth.l(t)  =  oghg_coeff('intercept') + oghg_coeff('slope') * RF.l('co2',t)  ;
+$if set mod_sai $if "%sai_experiment%"=="g0" W_SAI.lo(t) = 0;
+$if set mod_sai $if "%sai_experiment%"=="g0" W_SAI.up(t) = +inf;
 
-* Total radiative forcing
-FORC.l(t)  =  RF.l('co2',t) + RFoth.l(t)   
-$if set mod_srm +geoeng_forcing*sum(n,SRM.l(t,n))
-;
-
-* Global temperature increase from pre-industrial levels
-TATM.l(t+1)  =  TATM.l(t) +  tempc('sigma1')*( FORC.l(t)
-                                                -  tempc('lambda')* TATM.l(t)
-                                                -  tempc('sigma2')*(TATM.l(t)-TOCEAN.l(t))  );
-
-* Ocean temperature
-TOCEAN.l(t+1)  =  TOCEAN.l(t) + tempc('heat_ocean')*(TATM.l(t)-TOCEAN.l(t));
+viter(iter,'TATM',t,n)$nsolve(n) = TATM.l(t);  # Keep track of last temperature values
 
 #===============================================================================
 *     ///////////////////////     REPORTING     ///////////////////////

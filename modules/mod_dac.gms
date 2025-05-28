@@ -42,6 +42,9 @@ $setglobal max_cdr 40
 * sets the element that you need.
 $elseif.ph %phase%=='sets'
 
+set v /'E_NEG'/; 
+vcheck('E_NEG') = yes;
+
 ## INCLUDE DATA
 #_________________________________________________________________________
 * In the phase INCLUDE_DATA you should declare and include all exogenous parameters. 
@@ -127,13 +130,10 @@ $elseif.ph %phase%=='declare_vars'
 Positive variable E_NEG(t,n)         'Installed capacity of DAC [GtCO2/yr]';
 Positive variable I_CDR(t,n)         'Yearly investment of DAC [T$/yr]';
 Positive variable COST_CDR(t,n)      'Yearly total cost of DAC [T$/yr]';
-Positive variable REV_CDR(t,n)        'Total revenues of DAC industry [T$/yr]';
-Variable GOVSUR(t,n)                 'Government surplus [Trill 2005 USD / year]'; 
 
 # VARIABLES STARTING LEVELS
 * to help convergence
 E_NEG.l(t,n) = 0;
-GOVSUR.l(t,n) = 0;
 
 ##  COMPUTE VARIABLES
 #_________________________________________________________________________
@@ -145,7 +145,6 @@ $elseif.ph %phase%=='compute_vars'
 * to avoid errors/help the solver to converge
 E_NEG.lo(t,n) = 1e-15; #such that E_NEG(tfirst)*depr^(tmax*tstep) > E_NEG.lo
 COST_CDR.up(t,n) = 0.25*ykali(t,n); #max dac costs 25% of gross gdp, for stability
-REV_CDR.up(t,n) = 0.5*ykali(t,n); #max dac revenues 50% of gross gdp, for stability
 I_CDR.up(t,n) = 30/c2co2;
 
 $ifthen.bs %burden_share%=="geo"
@@ -195,9 +194,6 @@ eq_depr_e_neg
 eq_cost_cdr
 eq_emi_stor_dac
 eq_mkt_growth_dac
-eq_rev_cdr     # total revenues of carbon removal  
-eq_govbal
-eq_netzero
 
 ##  EQUATIONS
 #_________________________________________________________________________
@@ -225,17 +221,6 @@ eq_mkt_growth_dac(t,tp1,n)$(reg(n) and pre(t,tp1))..
                                             (1 + mkt_growth_rate_dac(t,n))**tlen(t) +
                                             tlen(tp1) * mkt_growth_free_dac(tp1,n);
 
-*DAC revenues
-eq_REV_CDR(t,n)$reg(n)..             REV_CDR(t,n) =E= CPRICE(t,n) * E_NEG(t,n) * 1e-3;
-
-*balance of government funds
-eq_govbal(t,n)$(reg(n) and not tfix(t))..           
-                                    GOVSUR(t,n) =E= CTX(t,n) - REV_CDR(t,n); 
-
-eq_netzero(t,n)$(reg(n) and year(t) le 2100)..        0 =G= 0
-$if set netzero                 + E_NEG(t,n) - EIND(t,n)
-;
-
 ##  BEFORE SOLVE
 #_________________________________________________________________________
 * In the phase BEFORE_SOLVE, you can update parameters (fixed
@@ -254,6 +239,12 @@ dac_totcost(t,n) = max(dac_tot0 * (wcum_dac(t) / wcum_dac('1'))**(-dac_learn(t,n
 $if %baseline%=="ssp3" dac_totcost(t,n)$(not tfirst(t)) = max(dac_tot0 * ( (sum(tt$(preds(t,tt)),E_NEG.l(tt,n)*tlen(tt)) + wcum_dac('1') ) / wcum_dac('1'))**(-dac_learn(t,n)),dac_totfloor);
 $if %baseline%=="ssp4" dac_totcost(t,n)$(not tfirst(t)) = max(dac_tot0 * ( (sum(tt$(preds(t,tt)),E_NEG.l(tt,n)*tlen(tt)) + wcum_dac('1') ) / wcum_dac('1'))**(-dac_learn(t,n)),dac_totfloor);
 
+##  AFTER SOLVE
+#_________________________________________________________________________
+$elseif.ph %phase%=='after_solve'
+
+viter(iter,'E_NEG',t,n)$nsolve(n) = E_NEG.l(t,n);# Keep track of last negative emission values
+
 ##  GDX ITEMS
 #_________________________________________________________________________
 * List the items to be kept in the final gdx
@@ -265,8 +256,6 @@ E_NEG
 I_CDR
 dac_totcost
 COST_CDR
-REV_CDR
-GOVSUR
 
 #
 totcapstor

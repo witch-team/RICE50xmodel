@@ -20,6 +20,7 @@ input/build/*
 !algo/
 !input/
 !modules/
+!coalitions/
 !post/
 !tools/
 
@@ -33,6 +34,7 @@ input/calibrations/temp
 .RData
 .Rhistory
 .Rproj.user
+*.Rproj
 .vscode
 rsconnect
 *.gpr
@@ -52,10 +54,12 @@ rsconnect
 .svn
 tools/python/*
 venv/
+*.gsp
 
-
-!run_policies.sh
 !conopt.opt
 !conopt4.opt
 
-*.gsp
+input/calib/build/*
+input/calib/*/
+!input/calib/data/
+input/calib/desktop.ini

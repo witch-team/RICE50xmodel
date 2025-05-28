@@ -41,7 +41,7 @@ eq_omega
 #_________________________________________________________________________
 $elseif.ph %phase%=='eqs'
 
- eq_omega(t,n)$(reg(n) and not tfirst(t))..   OMEGA(t,n)  =E=  ( (a1 * TATM(t)) + (a2 * power(TATM(t),a3)) ) - ( (a1 * TATM('2')) + (a2 * power(TATM('2'),a3)) ) ;
+ eq_omega(t,n)$(reg_all(n) and not tfirst(t))..   OMEGA(t,n)  =E=  ( (a1 * TATM(t)) + (a2 * power(TATM(t),a3)) ) - ( (a1 * TATM('2')) + (a2 * power(TATM('2'),a3)) ) ;
 
 
 #===============================================================================

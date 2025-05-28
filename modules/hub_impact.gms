@@ -14,7 +14,7 @@ $ifthen.ph %phase%=='conf'
 * GDP baseline multiplier (i.e., max_gain=2 -> maximum gains are 2x GDPbase)
 *$setglobal damage_cap
 $setglobal max_gain    1
-$setglobal max_damage  0.9
+$setglobal max_damage  0.6
 
 * for threshold/catastrophic damage
 *$setglobal threshold_damage
@@ -30,11 +30,15 @@ $setglobal gradient_d 0.01 # (% of GDP)
 #_________________________________________________________________________
 $elseif.ph %phase%=='include_data'
 
+Scalar a_prec /0/; #by default, no impacts from precipitation
+Scalar b_prec /2/; #only integers
+Scalar delta_prec /1e-3/;
+ 
 ##  COMPUTE DATA
 #_________________________________________________________________________
 $elseif.ph %phase%=='compute_data'
 
-
+$if set prec_impact a_prec=%prec_impact%;
 
 ##  DECLARE VARIABLES
 #_________________________________________________________________________
@@ -44,8 +48,9 @@ VARIABLES
     OMEGA(t,n)               'Economic impact from the impact function from Climate Change [% of GDP]'
     DAMAGES(t,n)             'Damages [Trill 2005 USD / year] (negative values are gains)'
     DAMFRAC(t,n)             'Damages as GDP Gross fraction [%GDPgross]: (negative values are gains)'
+    DAMFRAC_PREC(t,n)        ''
     DAMFRAC_UNBOUNDED(t,n)   'Potential unbounded damages, as % of gross GDP (negative values are gains)'
-    DAMFRAC_UPBOUND(t,n)        'Potential GDP, net of damages, bounded in maximum gains [Trill 2005 USD / year]'
+    DAMFRAC_UPBOUND(t,n)     'Potential GDP, net of damages, bounded in maximum gains [Trill 2005 USD / year]'
 ;
 
 # VARIABLES STARTING LEVELS ----------------------------
@@ -63,17 +68,18 @@ SCALAR   delta  /1e-2/ ; #-14 more than 1e-8 get solver stucked
 
 ##  STABILITY CONSTRAINTS ------------------------------
 * to avoid errors/help the solver to converge
-$ifthen.omg %omega_eq% == 'full'
 OMEGA.lo(t,n) = (-1 + 1e-5) ; # needed because of eq_komega
-$endif.omg
 
 DAMFRAC.lo(t,n) = - %max_gain% - delta;
 DAMFRAC.up(t,n) = %max_damage% + delta;
 
-##  CONTROL RATE LIMITS --------------------------------
+##  first period zero impacts --------------------------------
 OMEGA.fx(tfirst,n)  = 0 ;
+DAMFRAC_UNBOUNDED.fx(tfirst,n) = 0;
 
 $if %impact%=="off" OMEGA.fx(t,n) = 0;
+DAMFRAC_PREC.lo(t,n) = - delta_prec;
+DAMFRAC_PREC.up(t,n) = 1 - delta_prec;
 
 #=========================================================================
 *   ///////////////////////     OPTIMIZATION    ///////////////////////
@@ -94,30 +100,30 @@ $elseif.ph %phase%=='eqs'
 
 ##  ESTIMATED YNET AND DAMAGES -------------------------
 * Unbounded Damfrac
- eq_damfrac_nobnd(t,n)$(reg(n)).. DAMFRAC_UNBOUNDED(t,n)  =E=   1 - ( 1/(1+ (OMEGA(t,n)
+ eq_damfrac_nobnd(tm1,t,n)$(reg_all(n) and pre(tm1,t)).. DAMFRAC_UNBOUNDED(t,n)  =E=   1 - ( 1/(1+ (OMEGA(t,n)
 $if set mod_adaptation             / ( 1 + (Q_ADA('ada',t,n)**ces_ada('exp',n))$(OMEGA.l(t,n) gt 0) )
 ) ) )
 $if set threshold_damage              + %threshold_d% * errorf( (TATM(t) - %threshold_temp%)/%threshold_sigma%)
-$if set gradient_damage               + (%gradient_d% * power( ( sqrt(sqr((TATM(t+1) - TATM(t))) + sqr(delta)) / 0.35) , 4))$(not tlast(t))
-$if set mod_srm $if set damage_geoeng + damage_geoeng_amount(n) * (-geoeng_forcing*W_SRM(t,n) / 3.5)**%impsrm_exponent%
+$if set gradient_damage               + (%gradient_d% * power( ( sqrt(sqr((TATM(t) - TATM(tm1))) + sqr(delta)) / 0.35) , 4))$(not tlast(t))
+$if set mod_sai $if "%sai_experiment%"=="g0" + damage_geoeng_amount(n) * power(-geoeng_forcing*W_SAI(t) / 3.5,2)
 ;
 
 $ifthen.dc set damage_cap
 * Gains upperbound
- eq_damfrac_upbnd(t,n)$(reg(n))..
+ eq_damfrac_upbnd(t,n)$(reg_all(n))..
    DAMFRAC_UPBOUND(t,n)  =E=  ( DAMFRAC_UNBOUNDED(t,n) + %max_damage% - Sqrt( Sqr(DAMFRAC_UNBOUNDED(t,n) - %max_damage%) + Sqr(delta) )  )/2  ;
 * Damages lowerbound and final YNET esteem
- eq_damfrac(t,n)$(reg(n))..
+ eq_damfrac(t,n)$(reg_all(n))..
    DAMFRAC(t,n)  =E=  ( DAMFRAC_UPBOUND(t,n) - %max_gain% + Sqrt( Sqr(DAMFRAC_UPBOUND(t,n) + %max_gain%) + Sqr(delta) ) )/2  ;
 
 $else.dc
  
-eq_damfrac(t,n)$(reg(n))..    DAMFRAC(t,n)  =E=  DAMFRAC_UNBOUNDED(t,n); 
+eq_damfrac(t,n)$(reg_all(n))..    DAMFRAC(t,n)  =E=  DAMFRAC_UNBOUNDED(t,n); 
 
 $endif.dc
 
 * Effective net Damages
- eq_damages(t,n)$(reg(n))..   DAMAGES(t,n)  =E=  YGROSS(t,n) * DAMFRAC(t,n);
+ eq_damages(t,n)$(reg_all(n))..   DAMAGES(t,n)  =E=  YGROSS(t,n) * DAMFRAC(t,n);
 
 #===============================================================================
 *     ///////////////////////     REPORTING     ///////////////////////
@@ -131,6 +137,7 @@ OMEGA
 DAMAGES
 DAMFRAC
 DAMFRAC_UNBOUNDED
+DAMFRAC_PREC
 
 $endif.ph
 

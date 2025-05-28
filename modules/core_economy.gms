@@ -13,6 +13,9 @@ $ifthen.ph %phase%=='conf'
 * | fixed | flexible |
 $setglobal savings 'fixed'
 
+* Calibrate capital and labour share for the CD function
+*$setglobal calib_labour_share
+
 *SSPs have been updated to 2020 based on Koch and Marian (2021), so no update anymore needed
 *$setglobal update_ssp_by_historical
 
@@ -83,10 +86,6 @@ PARAMETERS
     world_avg_s(t)
 ;
 
-prodshare('labour', n) = 0.7;
-prodshare('capital', n) = 0.3;
-
-
 ##  PARAMETERS LOADED ----------
 parameter ykali(t,n) 'GDP for the dynamic calibration [T$]';
 load_from_ssp(ykali,'t,n',%baseline%,baseline)
@@ -126,11 +125,12 @@ pop(t,n) = l(t,n);
 
 * Conversion factors between PPP and MER
 $gdxin %datapath%data_baseline
-parameter ppp2mer(t,n) 'ratio to convert PPP to MER';
+parameter ppp2mer(n) 'ratio to convert PPP to MER';
 $loaddc ppp2mer
 $gdxin
 parameter mer2ppp(t,n) 'ratio to convert MER to PPP';
-mer2ppp(t,n) = 1 / ppp2mer(t,n);
+ppp2mer(n)$(ppp2mer(n) eq 0) = 1;
+mer2ppp(t,n) = 1 / ppp2mer(n);
 #PPP adjustment in case
 $if %exchange_rate%=="PPP" ykali(t,n) = ykali(t,n) * mer2ppp(t,n); gdppc_kali(t,n) = gdppc_kali(t,n) * mer2ppp(t,n);
 
@@ -140,24 +140,30 @@ $if %exchange_rate%=="PPP" ykali(t,n) = ykali(t,n) * mer2ppp(t,n); gdppc_kali(t,
 PARAMETERS
     s0(*,t,n)      'Regions Savings Rate at starting time [%GDP]'
     k0(*,t,n)      'Initial Regions Capital at starting time [Trill 2005 USD]'
+    r0(*,t,n)      'Regions Interest Rate at starting time [%]'
 ;
 
 $gdxin '%datapath%data_validation.gdx'
-$load k0=k_valid_article, s0=socecon_valid_weo_mean
+$load k0=k_valid_article, s0=socecon_valid_weo_mean, r0=socecon_valid_wdi_mean
 $gdxin
 $if %exchange_rate%=="PPP" k0('fg',t,n) = k0('fg',t,n)*mer2ppp(t,n);
 *for regions with missing capital, impute based on estimated linar relationship with GDP (R squared = 0.9604)
 k0('fg','1',n)$(k0('fg','1',n) eq 0) = 2.72 * ykali('1',n) + 0.127;
 s0('savings_rate', '1', n) = max(s0('savings_rate', '1', n), 1) / 100; #in percent, for negative value set to 1% to avoid negative capital
-#use: k0('fg', '1', n) and s0('savings_rate', '1', n)
+* real interest rate
+r0('interest_rate', '1', n) = max(r0('interest_rate', '1', n), 1) / 100 - s0('inflation_rate', '1', n) / 200;
+#use: k0('fg', '1', n) and s0('savings_rate', '1', n) and r0('interest_rate', '1', n)
 
+PARAMETER labour_share(n) 'Labour share in GDP';
+$gdxin '%datapath%data_mod_labour.gdx'
+$load labour_share
+$gdxin
+labour_share(n)$(labour_share(n) eq 0) = 0.7; #original RICE/DICE value
+labour_share(n) = min(max(labour_share(n), 0.5), 0.8); #limit to 50-80% range
 
 ##  PARAMETERS EVALUATED ----------
 
 PARAMETER
-* Starting values
-   q0(n)              'Starting (2015) GDP for each region [Trill 2005 USD]'
-   e0(n)              'Initial (2015) emissions per each Region [GtCO2-eq]'
 * Total factor productivity
    tfp(t,n)           'Regions Total Factor Productivity'
    i_tfp(t,n)         'Baselines Investments to evaluate TFP'
@@ -169,12 +175,25 @@ PARAMETER
 #_________________________________________________________________________
 $elseif.ph %phase%=='compute_data'
 
-* Starting GDP
-q0(n) = ykali('1',n) ;
+prodshare('labour', n) = 0.7; #original RICE/DICE value
+$ifthen.cs set calib_labour_share
+* now calibrate capital and labour shares of GDP based on wage share in GDP indirectly based on gross capital productivity
+parameter wage0(n) 'USD per capita per year';
+wage0(n) = (ykali('1',n) - (r0('interest_rate', '1', n) + dk) * k0('fg', '1', n)) / pop('1',n) * 1e6;
+*wage at least to be one third of GDP per capita
+wage0(n) = max(wage0(n), (1/3)*gdppc_kali('1',n));
+prodshare('labour', n) = (wage0(n) * pop('1',n) * 1e-6) / ykali('1',n);
+#now instead take labour share directly from Guerriero (2019)
+prodshare('labour', n) = labour_share(n);
+$endif.cs
+prodshare('capital', n) = 1 - prodshare('labour', n);
+
 
  ##  BASELINE PER-CAPITA GROWTH ------------------------
 * Baseline per-capita growth
-basegrowthcap(t,n) = ((( (ykali(t+1,n)/pop(t+1,n)) / (ykali(t,n)/pop(t,n)) )**(1/tstep)) - 1 )$(t.val < card(t))  ; # last value set to 0
+loop((t,tp1)$(pre(t,tp1) and tnolast(t)),
+basegrowthcap(t,n) = ((( (ykali(tp1,n)/pop(tp1,n)) / (ykali(t,n)/pop(t,n)) )**(1/tstep)) - 1 );
+);
 
 ##  SAVINGS RATE --------
 * Optimal long-run Savings rate
@@ -182,7 +201,7 @@ optlr_savings(n) = (dk + .004)/(dk + .004*elasmu + prstp)*prodshare('capital',n)
 
 * Evaluate converging Savings Rate
 * Linear interpolation: S0 + (Send - S0)*(t - t0)/(tend - t0)
-fixed_savings(t,n) = s0('savings_rate', '1', n) + (optlr_savings(n) - s0('savings_rate', '1', n)) * (t.val - 1)/(card(t) - 1);
+fixed_savings(t,n) = s0('savings_rate', '1', n) + (optlr_savings(n) - s0('savings_rate', '1', n)) * (tperiod(t) - 1)/(smax(tt,tperiod(tt)) - 1);
 
 
 ##  DYNAMIC CALIBRATION OF TFP FROM BASELINE AND SCENARIO ---------------------
@@ -190,24 +209,23 @@ fixed_savings(t,n) = s0('savings_rate', '1', n) + (optlr_savings(n) - s0('saving
 k_tfp('1',n)  =  k0('fg', '1', n);
 
 * retrieve tfp from reverting the Cobb-Douglas Production Function based on fixed investment rates iteratively
-loop(t,
+loop((t,tp1)$pre(t,tp1),
    # Investments
    i_tfp(t,n)  =  fixed_savings(t,n)  * ykali(t,n)   ;
    # Capital
-   k_tfp(t+1,n)  =  ((1-dk)**tstep) * k_tfp(t,n)  +  tstep * i_tfp(t,n)  ;
+   k_tfp(tp1,n)  =  ((1-dk)**tstep) * k_tfp(t,n)  +  tstep * i_tfp(t,n)  ;
    # TFP of current scenario (explicited from Cobb-Douglas prod. function)
    tfp(t,n)  =  ykali(t,n) / {
-                                 (
-$if set mod_government            working_hours('1',n)/5278 * employment_rate('1',n)/100 *     
-                                  pop(t,n)/1000
+                                 ( pop(t,n)/1000
                                  )**prodshare('labour',n) *
                                  k_tfp(t,n)**prodshare('capital',n) *
-$if set mod_natural_capital      (gnn**natural_capital_global_elasticity(n)) * (natural_capital_aggregate(n,'mN'))**prodshare('nature',n) *
+$if set mod_natural_capital      (sum(nn, natural_capital_aggregate(nn,'nN'))**natural_capital_global_elasticity(n)) * (natural_capital_aggregate(n,'mN'))**prodshare('nature',n) *
                                  1
                               };
-
 );
+tfp(t,n)$tlast(t) = sum(tt$pre(tt,t), tfp(tt,n));
 
+tolerance("Y") = 1e-3; #0.1% of variation of economy
 
 ##  DECLARE VARIABLES
 #_________________________________________________________________________
@@ -239,7 +257,7 @@ POSITIVE VARIABLES  Y, YNET, YGROSS, C, CPC, K, I, S;
       I.l(t,n) = S.l(t,n) * ykali(t,n)  ;
       C.l(t,n) = ykali(t,n) - I.l(t,n)  ;
     CPC.l(t,n) = C.l(t,n) / pop(t,n)  * 1e6;
-      K.l(t,n) = k_tfp(t,n) ;
+      K.l(t,n) = k_tfp(t,n);
       RI.l(t,n) = 0.05;
 
 ##  COMPUTE VARIABLES
@@ -274,11 +292,13 @@ $ifthen.sav  %savings%=='fixed'
   S.fx(t,n) = fixed_savings(t,n)  ;
 $else.sav
 * Savings are left free to be optimized
-* They are fixed to optimal DICE value only for last 10 periods
-* to avoid end-of-world-effects
-  S.fx(last10(t),n) = optlr_savings(n)  ;
+  S.lo(t,n) = 0.1;
+  S.up(t,n) = 0.45;
+  #allow only gradual adjustment over time from starting point
+  S.lo(t,n) = s0('savings_rate', '1', n) + (S.lo('58',n) - s0('savings_rate', '1', n)) * (tperiod(t) - 1)/(smax(tt,tperiod(tt)) - 1);
+  S.up(t,n) = s0('savings_rate', '1', n) + (S.up('58',n) - s0('savings_rate', '1', n)) * (tperiod(t) - 1)/(smax(tt,tperiod(tt)) - 1);
 * Fix starting point
-  S.fx(tfirst,n) = s0('savings_rate', '1', n)  ;
+  S.fx(tfirst,n) = s0('savings_rate', '1', n);
 $endif.sav
 
 
@@ -306,45 +326,30 @@ $elseif.ph %phase%=='eql'
 $elseif.ph %phase%=='eqs'
 
 * GDP gross: Cobb-Douglas production function
-eq_ygross(t,n)$(reg(n) and ord(t) gt 1)..  YGROSS(t,n)  =E=  tfp(t,n) * (K(t,n)**prodshare('capital',n)) * 
+eq_ygross(t,n)$(reg(n) and tperiod(t) gt 1)..  YGROSS(t,n)  =E=  tfp(t,n) * (K(t,n)**prodshare('capital',n)) * 
                                             [
 $if set mod_natural_capital                  GLOBAL_NN(t,n) ** natural_capital_global_elasticity(n) * NAT_CAP_DAM('market',t,n)**prodshare('nature',n) * 
-                                            (
-$if set mod_government                       LABOUR(t,n)*
-                                             pop(t,n)/1000)**prodshare('labour',n)]
+                                            (pop(t,n)/1000)**prodshare('labour',n)]
 ;
 
 * GDP net of Climate Damages
 $ifthen.dam set damages_postprocessed
- eq_ynet(t,n)$(reg(n))..  YNET(t,n)  =E=  YGROSS(t,n) - DAMAGES.l(t,n)  ;
+eq_ynet(t,n)$(reg(n))..  YNET(t,n)  =E=  YGROSS(t,n) - DAMAGES.l(t,n)  ;
 $else.dam
 eq_ynet(t,n)$(reg(n))..  YNET(t,n)  =E=  YGROSS(t,n) - DAMAGES(t,n)  ;
 $endif.dam
 
 * GDP net of both Damages and Abatecosts
  eq_yy(t,n)$(reg(n))..   Y(t,n)  =E=  YNET(t,n)
-                                      # CO2 Abatement Costs
-                                  -   ABATECOST(t,n)
-                                      # CO2 Carbon Tax [Trill USD / GtCO2]
-                                  -   ctax_corrected(t,n) * 1e-3 * (E(t,n) - E.l(t,n))
-
-$ifthen.oghg %climate% == 'witchoghg'
-                                      # OGHG Abatement Costs
-                                  -   sum(oghg,  ABATECOST_OGHG(oghg,t,n) )
-                                      # OGHG Carbon Tax [Trill USD / GtCO2eq]
-                                  -   ctax(t,n) * sum(oghg, EOGHG(oghg,t,n) - EOGHG.l(oghg,t,n))
-$endif.oghg
-
-$ifthen.gov set mod_government
-                                  -   TAX('capital',t,n) * RI.l(t,n)*K(t,n)
-                                  -   TAX('labour',t,n) * MPL(t,n) * (pop(t,n)/1000) * LABOUR(t,n)
-                                  +   GOV_EXP(t,n)
-                                  -   ctax(t,n) * E.l(t,n)  #to undo the default lump-sum redistirbution of the ctax
-$endif.gov
-
-                                       # Cost of SRM Geoengineering
-$if set mod_srm                   -    SRM_COST(t,n)
-
+                                      # GHGs Abatement Costs
+                                  -   sum(ghg,ABATECOST(t,n,ghg))
+                                      # Cost of land use emission control
+                                  -   ABCOSTLAND(t,n)
+                                      # Carbon Tax [Trill USD / Gtspecies]
+                                  -   sum(ghg, ctax_corrected(t,n,ghg) * convy_ghg(ghg) * (E(t,n,ghg) - E.l(t,n,ghg)) )
+                                       # Cost of stratospheric aerosol injection
+$if set mod_sai                   -    COST_SAI(t,n)
+                                       # Cost of carbon dioxide removal
 $if set mod_dac                   -    COST_CDR(t,n)
 ;
 
@@ -362,12 +367,24 @@ $if set mod_natural_capital           - sum(type, NAT_INV(type,t,n))
  eq_cpc(t,n)$(reg(n))..   CPC(t,n)  =E=  C(t,n) / pop(t,n) * 1e6 ;
 
 * Capital according to depreciation and investments
- eq_kk(t+1,n)$(reg(n))..   K(t+1,n)  =E=  (1-dk)**tstep * K(t,n) + tstep * I(t,n)   ;
+ eq_kk(t,tp1,n)$(reg(n) and pre(t,tp1))..   K(tp1,n)  =E=  (1-dk)**tstep * K(t,n) + tstep * I(t,n)   ;
 
 * Interest rate
- eq_ri(t+1,n)$(reg(n))..   RI(t,n)  =E=  ( (1+prstp) * (CPC(t+1,n)/CPC(t,n))**(elasmu/tstep) ) - 1  ;
+ eq_ri(t,tp1,n)$(reg(n) and pre(t,tp1))..   RI(t,n)  =E=  ( (1+prstp) * (CPC(tp1,n)/CPC(t,n))**(elasmu/tstep) ) - 1  ;
+ 
 
 
+##  BEFORE SOLVE
+#_________________________________________________________________________
+* In the phase BEFORE_SOLVE, you can update parameters (fixed
+* variables, ...) inside the nash loop and right before solving the
+* model. This is typically done for externalities, spillovers, ...
+$elseif.ph %phase%=='before_solve'
+
+$ifthen.sav  %savings%=='flexible'
+* Last ten periods keep saving rate constant to avoid terminal problems
+  S.fx(t,n)$(tperiod(t) gt (smax(tt,tperiod(tt)) - 10) )  = S.l('48',n);
+$endif.sav
 
 ##  AFTER SOLVE
 #_________________________________________________________________________
@@ -380,6 +397,8 @@ $elseif.ph %phase%=='after_solve'
  world_k(t)            = sum(n$( nsolve(n)),      K.l(t,n));
  world_avg_s(t)        = sum(n$( nsolve(n)),      S.l(t,n))/card(nsolve);
 
+viter(iter,'S',t,n)$nsolve(n)   = S.l(t,n);    # Keep track of last investment values
+viter(iter,'Y',t,n)$nsolve(n)   = Y.l(t,n)/ykali(t,n);    # Keep track of last gdp values
 
 #===============================================================================
 *     ///////////////////////     REPORTING     ///////////////////////
@@ -391,30 +410,18 @@ $elseif.ph %phase%=='report'
 
 * Social Cost of Carbon
 Parameter
-    scc(t,n)           'Social Cost of Carbon' 
+    scc(t,n,ghg)           'Social Cost of Carbon' 
 ;
 * Evaluate social cost of carbon per region through marginals as in DICE
-$if %cooperation%=="coop" scc(t,n) = div0(-1e3*eq_e.m(t,n),eq_cc.m(t,n)); #this is regional, not global (emissions at only within its own reagion considered unless cooperative!)
-$if %cooperation%=="noncoop" scc(t,n) = -1e3*sum(nn, div0(eq_e.m(t,nn) , eq_cc.m(t,nn)) );
-
-
-# LOCAL DAMAGES ----------------------------------------
-PARAMETERS
-* Damages fraction
-    damfrac_ygross(t,n) 'Damages over GDPgross [%GDPgross]: (-) damage (+) gain'
-* Damages absolute
-    damages_ygross(t,n) 'Absolute damages over GDPgross [Trill 2005 USD]: (-) damage (+) gain'
-;
- damfrac_ygross(t,n) = ((YNET.l(t,n) - YGROSS.l(t,n))/YGROSS.l(t,n) * 100 ) ;
- damages_ygross(t,n) = YNET.l(t,n) - YGROSS.l(t,n)  ;
+scc(t,n,ghg)$(nsolve(n) and year(t) le 2200 and eq_cc.l(t,n) gt 0) = -1e3*sum(nn$nsolve(nn), div0(eq_e.m(t,nn,ghg) , eq_cc.m(t,nn)) );
 
 # WORLD DAMAGES ----------------------------------------
 PARAMETERS
-  world_damfrac(t)  'World damages [%]'
+  world_damfrac(t)  'World damages [% of GDP]'
   world_damages(t)  'World damages [Trill 2005 USD]'
 ;
- world_damfrac(t) = sum(n,YGROSS.l(t,n))/sum(n,YNET.l(t,n)) - 1;
- world_damages(t) = sum(n,YGROSS.l(t,n)) - sum(n,YNET.l(t,n));
+ world_damfrac(t) = sum(n,DAMAGES.l(t,n))/sum(n,YGROSS.l(t,n));
+
 
 
 ##  GDX ITEMS
@@ -430,6 +437,7 @@ ykali
 ppp2mer
 pop
 l
+gdppc_kali
 basegrowthcap
 tfp
 elasmu
@@ -440,10 +448,10 @@ scc
 rr
 ga
 gl
-damfrac_ygross
-damages_ygross
 world_damfrac
-world_damages
+fixed_savings
+labour_share
+optlr_savings
 
 # Variables --------------------------------------------
 C

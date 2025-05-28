@@ -14,6 +14,63 @@ $batinclude "modules" "eql"
 CO2.optfile = 1;
 CO2.SCALEOPT = 1;
 
+option cns            = conopt3   ; #specify conopt3 for CNS solver
+
+* fix relevant climate variable to bau run first iteration climate model
+$if set mod_sai W_SAI.fx(t) = sum(n,N_SAI.l(t,n));
+
+$ifthen.climate %climate%=="fair"
+
+model fair / eq_reslom,eq_concco2,eq_catm,eq_cumemi,eq_csinks,eq_concghg,eq_methoxi,
+             eq_forcco2,eq_forcch4,eq_forcn20,eq_forcoghg,
+             eq_forco3trop,eq_forcing,eq_forch2o,
+             eq_tatm,eq_tslow,eq_tfast,eq_irflhs,eq_irfrhs     /;
+
+* fix W_EMI to bau run
+W_EMI.fx(ghg,t) = sum(n, E.l(t,n,ghg)
+$if set mod_emission_pulse           + emission_pulse(ghg,t)                                     
+);
+FF_CH4.fx(t) = FF_CH4.l(t);
+
+* initialize climate variables to BAU run
+solve fair using cns; 
+
+FF_CH4.lo(t) = 0;
+FF_CH4.up(t) = 1;
+
+$elseif.climate %climate%=="witchco2"
+
+model witchco2 / eq_wcum_emi_co2,eq_rf_co2,eq_rf_oghg,eq_forc,eq_tatm,eq_tocean/;
+
+* fix W_EMI to bau run
+W_EMI.fx('co2',t) = sum(n, E.l(t,n,'co2')
+$if set mod_emission_pulse           + emission_pulse('co2',t)                                     
+) /   wemi2qemi('co2');
+
+* initialize climate variables to BAU run
+solve witchco2 using cns; 
+
+
+$elseif.climate %climate%=="witchghg"
+
+model witchghg / eq_wcum_emi_co2,eq_wcum_emi_oghg,eq_rf_co2,eq_rf_oghg,eq_forc,eq_tatm,eq_tocean/;
+
+* fix W_EMI to bau run
+W_EMI.fx(ghg,t) = sum(n, E.l(t,n,ghg)
+$if set mod_emission_pulse           + emission_pulse(ghg,t)                                     
+) / wemi2qemi(ghg);
+
+* initialize climate variables to BAU run
+solve witchghg using cns; 
+
+$endif.climate
+
+* unconstrain relevant climate variables
+W_EMI.lo(ghg,t) = -inf;
+W_EMI.up(ghg,t) = inf;
+$if set mod_sai W_SAI.lo(t) = 0;
+$if set mod_sai W_SAI.up(t) = +inf;
+
 # ................................................
 # PROGRESSIVE OPTIMIZATIONS LOOOP 
 # ................................................
@@ -59,15 +116,16 @@ option solprint       = on        ;
 option limrow         = 0         ;
 option limcol         = 0         ;
 option holdFixedAsync = 1         ; 
+option nlp            = conopt3   ; #by default: use CONOPT3
 
 
 * prints solution listing when asynchronous solve (Grid/Threads) is used
-$if set only_solve option AsyncSolLst = 1;
+$if set onlysolve option AsyncSolLst = 1;
 
 ##  LAUNCH SOLVER
 #_________________________________________________________________________
-$batinclude "algorithm/solve_regions"
-
+$if not set serial_solving $batinclude "algorithm/solve_regions"
+$if set serial_solving $batinclude "algorithm/solve_regions_serial"
 $shift
 $goto loop0
 # ................................................

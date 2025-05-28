@@ -14,17 +14,22 @@ $ifthen.ph %phase%=='conf'
 
 $setglobal tfix 1
 
+* Value in a specific year (use tt instead of t, not working in equations)
+$ifthen.x not set stochastic 
+$macro valuein(takeyear, expr) (smax(tt$(year(tt) eq &takeyear), &expr))
+$endif.x
+
 ## SETS
 #_________________________________________________________________________
 $elseif.ph %phase%=='sets'
 
 SETS
-    t                 'Time period nodes'  # values in time.inc included below
-* Time control
-    tfirst(t)         'First time period nodes'
-    tsecond(t)        'Second time period node'
-    tlast(t)          'Last time period nodes'
-    last10(t)         'Last 10 period nodes'
+    t           'Time period nodes'
+    tfirst(t)   'First time period nodes'
+    tnofirst(t) 'All nodes except the first time period node'
+    tlast(t)    'Last time period nodes'
+    t5last(t)   'Last 5 time period nodes'
+    tnolast(t)  'All nodes except the last time period nodes'
 ;
 alias(t,tt,ttt,tp1,tp2,tm1,tm2);
 
@@ -40,10 +45,11 @@ $include %datapath%/time.inc
 
 
 * Timecontrol definitions
-tfirst(t)  =  yes$(t.val eq 1)          ;
-tsecond(t) =  yes$(t.val eq 2)          ;
-tlast(t)   =  yes$(t.val eq card(t))    ; #true if it equals t-set size (cardinality)
-last10(t)  =  yes$(t.val gt card(t)-10) ;
+tfirst(t) = yes$(tperiod(t) eq smin(tt,tperiod(tt)));
+tlast(t) = yes$(tperiod(t) eq smax(tt,tperiod(tt)));
+t5last(t) = yes$(tperiod(t) gt smax(tt,tperiod(tt)) - 5);
+tnofirst(t) = yes$(not tfirst(t));
+tnolast(t)  = yes$(not tlast(t));
 
 * Fixed period nodes
 set tfix(t)    'fixed period nodes';
@@ -78,8 +84,15 @@ loadfix(name,idx,parameter) \
 
 * combinations of fixes and regions
 $macro map_nt (reg(n) and (not tfix(t)))
-$macro map_nt1 (reg(n) and (not tfix(t+1)))
+$macro map_nt1 (reg(n) and (not tfix(tp1)) and pre(t,tp1))
 $macro map_t (not tfix(t))
+
+##  DECLARE VARIABLES
+#_________________________________________________________________________
+$elseif.ph %phase%=='declare_vars'
+
+$if not set stochastic Variable PROB(t) 'Probability of states';
+$if not set stochastic PROB.fx(t) = 1;
 
 
 ##  FIX VARIABLES
@@ -103,6 +116,8 @@ t
 tstep
 tfix
 tlen
+pre
+preds
 
 # Parameters -------------------------------------------
 year

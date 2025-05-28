@@ -193,17 +193,17 @@ $elseif.ph %phase%=='eqs'
 
 ##  BURKE'S IMPACT --------------------------------------
 * BHM's yearly local impact
- eq_bimpact(t,n)$(reg(n) and ord(t) gt 1)..  BIMPACT(t,n)  =E=  beta_bhm('T', n, t) * ( TEMP_REGION_DAM%dam_endo%(t,n) - climate_region_coef('base_temp',n) )
+ eq_bimpact(t,n)$(reg_all(n) and tperiod(t) gt 1)..  BIMPACT(t,n)  =E=  beta_bhm('T', n, t) * ( TEMP_REGION_DAM%dam_endo%(t,n) - climate_region_coef('base_temp',n) )
                                             +   beta_bhm('T2', n, t)* ( power(TEMP_REGION_DAM%dam_endo%(t,n),2) - power(climate_region_coef('base_temp',n),2) ) ;
 
 # OMEGA FULL
 $ifthen.omg %omega_eq% == 'full'
 * Omega full formulation
- eq_omega(t,n)$(reg(n) and not tlast(t))..  OMEGA%omegabnd%(t+1,n)  =E=  (  (1 + (OMEGA%omegabnd%(t,n)))
+ eq_omega(t,tp1,n)$(reg_all(n) and not tlast(t) and pre(t,tp1))..  OMEGA%omegabnd%(tp1,n)  =E=  (  (1 + (OMEGA%omegabnd%(t,n)))
                                                                             #  TFP factor
-                                                                            *  (tfp(t+1,n)/tfp(t,n))
+                                                                            *  (tfp(tp1,n)/tfp(t,n))
                                                                             #  Pop factor
-                                                                            *  ((( pop(t+1,n)/1000  )/( pop(t,n)/1000 ))**prodshare('labour',n)) * (pop(t,n)/pop(t+1,n))
+                                                                            *  ((( pop(tp1,n)/1000  )/( pop(t,n)/1000 ))**prodshare('labour',n)) * (pop(t,n)/pop(tp1,n))
                                                                             #  Capital-Omega factor
                                                                             *  KOMEGA(t,n)
                                                                             #  BHM impact on pc-growth
@@ -211,16 +211,16 @@ $ifthen.omg %omega_eq% == 'full'
                                                                         ) - 1  ;
 
 * Capital-Omega factor
- eq_komega(t,n)$(reg(n))..  KOMEGA(t,n)  =E=  ( (((1-dk)**tstep) * K(t,n)  +  tstep * S(t,n) * tfp(t,n) * (K(t,n)**prodshare('capital',n)) * ((pop(t,n)/1000)**prodshare('labour',n)) * (1/(1+OMEGA%omegabnd%(t,n))) ) / K(t,n) )**prodshare('capital',n)  ;
+ eq_komega(t,n)$(reg_all(n))..  KOMEGA(t,n)  =E=  ( (((1-dk)**tstep) * K(t,n)  +  tstep * S(t,n) * tfp(t,n) * (K(t,n)**prodshare('capital',n)) * ((pop(t,n)/1000)**prodshare('labour',n)) * (1/(1+OMEGA%omegabnd%(t,n))) ) / K(t,n) )**prodshare('capital',n)  ;
 # OMEGA SIMPLE
 $else.omg
 * Omega-simple formulation
- eq_omega(t,n)$(reg(n)  and not tlast(t))..  OMEGA%omegabnd%(t+1,n)  =E=  (  (1 + (OMEGA%omegabnd%(t,n))) / ((1 + BIMPACT(t,n))**tstep)  ) - 1  ;
+ eq_omega(t,tp1,n)$(reg_all(n) and pre(t,tp1) and not tlast(t))..  OMEGA%omegabnd%(tp1,n)  =E=  (  (1 + (OMEGA%omegabnd%(t,n))) / ((1 + BIMPACT(t,n))**tstep)  ) - 1  ;
 $endif.omg
 
 
 $ifthen.exog set temp_region_exogen
- eq_omega_unbounded(t,n)$(reg(n) and not tlast(t))..
+ eq_omega_unbounded(t,n)$(reg_all(n) and not tlast(t))..
    OMEGA(t,n)  =E=  ( OMEGA_UNBOUNDED(t,n) + omega_minimum + Sqrt( Sqr(OMEGA_UNBOUNDED(t,n) - omega_minimum) + Sqr(delta) ) )/2  ;
 $endif.exog
 
@@ -235,7 +235,7 @@ $elseif.ph %phase%=='report'
 ##  BURKE DAMAGES SIMULATED ----------------------------
 * Here we simulate corresponding Burke damages (WITHOUT ABATE COSTS)
 * from his growth-based original function, applied for each country:
-* GDPcap(t+1) = GDPcap(t) * (1+basegrowth(t)+ bimpact(t))**tstep
+* GDPcap(tp1) = GDPcap(t) * (1+basegrowth(t)+ bimpact(t))**tstep
 
 PARAMETERS
        ynet_burkesim(t,n) 
@@ -249,7 +249,7 @@ world_damfrac_burkesim(t)  'Burke-simulated world damages [%baseline]'
  ynetcap_burkesim(tfirst(t),n) = ykali('1',n)/pop('1',n);
 
 * Simulation using pc-growth formula
- loop(t$(t.val < card(t)),    ynetcap_burkesim(t+1,n)  =  ynetcap_burkesim(t,n) * (( 1 + basegrowthcap(t,n) + BIMPACT.l(t,n) )**tstep)  ;   );
+loop((t,tp1)$(pre(t,tp1) and tnolast(t)),    ynetcap_burkesim(tp1,n)  =  ynetcap_burkesim(t,n) * (( 1 + basegrowthcap(t,n) + BIMPACT.l(t,n) )**tstep)  ;   );
 
 * Damages evaluation
     damfrac_burkesim(t,n) = (  (ynetcap_burkesim(t,n) - (ykali(t,n)/pop(t,n))) / (ykali(t,n)/pop(t,n))  ) * (100)  ;

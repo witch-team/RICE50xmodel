@@ -20,8 +20,8 @@ scalar starttime; starttime = jnow;
 *   ///////////////////////       SETTINGS      ///////////////////////
 *=========================================================================
 * REGION DEFINITION
-*| ed57 | witch17 | r5 | global |
-$setglobal n 'ed57'
+*| ed58 | maxiso3 | witch17 | r5 | global |
+$setglobal n 'ed58'
 
 * BASELINE SCENARIO
 *| ssp1 | ssp2 | ssp3 | ssp4 | ssp5 |
@@ -54,6 +54,7 @@ $setglobal nameout "%baseline%_%policy%"
 *=========================================================================
 **  DATA PATH DEFINITION
 $setglobal datapath  data_%n%/
+$if set stochastic $setglobal datapath data_%n%_%stochastic%/
 ** Results path
 $ifthen not set workdir
 $setglobal resdir "%gams.curdir%"
@@ -103,9 +104,9 @@ $batinclude "modules" "report";
 scalar elapsed; elapsed = (jnow - starttime)*24*3600;
 #Just for quick analysis display a few values
 Parameters tatm2100, world_damfrac2100, gdp2100;
-tatm2100=TATM.l('18');
-world_damfrac2100=world_damfrac('18');
-gdp2100=sum(n,YNET.l('18',n));
+tatm2100          = valuein(2100, TATM.l(tt));
+world_damfrac2100 = valuein(2100, world_damfrac(tt));
+gdp2100           = valuein(2100, sum(n,YNET.l(tt,n)));
 display tatm2100,gdp2100,world_damfrac2100,elapsed;
 
 * PRODUCE RESULTS GDX

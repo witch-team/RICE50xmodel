@@ -17,7 +17,7 @@ $ifthen.ph %phase%=='conf'
 # for damages evaluation equal to maximum observed temperature in past calibration data )
 *$setglobal temp_region_cap
 
-$setglobal downscaling cmip6_pop #cmip5_pop, cmip6_pop, cmip6_area
+$setglobal downscaling cmip5_pop #cmip5_pop, cmip6_pop, cmip6_area
 
 ## SETS
 #_________________________________________________________________________
@@ -64,7 +64,7 @@ $ifthen.exo set temp_region_exogen
 # Exogen local temperatures (for simulation purposes only).
 PARAMETER  temp_region_exogen(t,n) 'Loaded exogeous local temperatures';
 temp_region_exogen(t,n) = temp_region_valid(t,n,'%temp_region_exogen%');
-temp_region_exogen(t,n)$(t.val gt 18) = temp_region_exogen('18',n);
+temp_region_exogen(t,n)$(tperiod(t) gt 18) = valuein(2100, temp_region_exogen(tt,n));
 $endif.exo
 
 ##  COMPUTE DATA
@@ -73,7 +73,7 @@ $elseif.ph %phase%=='compute_data'
 
 #calculate average 5yr temperature from yearly hadcrut4 data
 tatm_valid(tincpast)$tpast(tincpast) = sum((n,yearlu)$(yearlu.val> (2015-tstep*(1-tincpast.val))-3 and yearlu.val<(2015-tstep*(1-tincpast.val))+3),temp_valid_yearlu('atm',yearlu,n))/(sum(n,1)*tstep) ;
-tatm0=tatm_valid('1');
+#tatm0=tatm_valid('1');
 
 ##  DECLARE VARIABLES
 #_________________________________________________________________________
@@ -85,6 +85,7 @@ VARIABLES
     TEMP_REGION(t,n)              'Near surface regional average temperature [deg.C]'
     TEMP_REGION_DAM(t,n)          'Regional pop-weighted average temperature used for damages evaluation [deg.C]'
     TEMP_REGION_DAM_INCPAST(tincpast,n)  'Regional pop-weighted average temperature used for damages evaluation [deg.C] inlcuding the past'
+    PRECIP_REGION(t,n)            'Regional average precipitation [mm/day]'
 ;
 
 ##  COMPUTE VARIABLES
@@ -123,6 +124,7 @@ $elseif.ph %phase%=='eql'
    eq_temp_region           # Local avg temperature downscaling equation
    eq_temp_region_dam       # Local temperature used for damages evaluation equation
    eq_temp_region_dam_incpast
+   eq_precip_region         # Local avg precipitation downscaling equation
 
 ##  EQUATIONS
 #_________________________________________________________________________
@@ -130,17 +132,24 @@ $elseif.ph %phase%=='eqs'
 
 $ifthen.exogn not set temp_region_exogen
 # Endogenous regional temperature downscaler
- eq_temp_region(t,n)$(reg(n))..
-    TEMP_REGION(t,n) =E= climate_region_coef('alpha_temp',n) + (climate_region_coef('beta_temp',n)) * TATM(t);
+ eq_temp_region(t,n)$(reg_all(n))..
+    TEMP_REGION(t,n) =E= climate_region_coef('alpha_temp',n) + (climate_region_coef('beta_temp',n)) * TATM(t)
+$if set mod_sai $if "%sai_experiment%"=="g6"    -  DTEMP_REGION_SAI(t,n)
+    ;
 $else.exogn
 # Exogenous regional temeperature
- eq_temp_region(t,n)$(reg(n))..
+ eq_temp_region(t,n)$(reg_all(n))..
     TEMP_REGION(t,n) =E= temp_region_exogen(t,n)  ;
 $endif.exogn
 
+ eq_precip_region(t,n)$(reg_all(n))..
+    PRECIP_REGION(t,n) =E= 
+    ( climate_region_coef('alpha_precip',n) + climate_region_coef('beta_precip',n) * TATM(t) ) * 12 * ( 1 
+$if set mod_sai $if "%sai_experiment%"=="g6"     +   DPRECIP_REGION_SAI(t,n) 
+    );
 
 $ifthen.tempcap set temp_region_cap
- eq_temp_region_dam(t,n)$(reg(n))..
+ eq_temp_region_dam(t,n)$(reg_all(n))..
     TEMP_REGION_DAM(t,n)  =E=  ( TEMP_REGION(t,n) + max_temp_region_dam
                                   - Sqrt( Sqr(TEMP_REGION(t,n)-max_temp_region_dam) + Sqr(delta_tempcap) )
                                )/2  ;
@@ -155,17 +164,19 @@ $ifthen.tempcap set temp_region_cap
     # ................................................................................................
 $else.tempcap
 # No cap here: damages evaluated to effective local temperatures
-  eq_temp_region_dam(t,n)$(reg(n)).. TEMP_REGION_DAM(t,n)  =E=  TEMP_REGION(t,n)  ;
+  eq_temp_region_dam(t,n)$(reg_all(n)).. TEMP_REGION_DAM(t,n)  =E=  TEMP_REGION(t,n)  ;
 $endif.tempcap
 
-   eq_temp_region_dam_incpast(tincpast,n)$(tnopast(tincpast) and reg(n)).. 
+   eq_temp_region_dam_incpast(tincpast,n)$(tnopast(tincpast) and reg_all(n)).. 
       TEMP_REGION_DAM_INCPAST(tincpast,n) =E= sum(t$sameas(t,tincpast), TEMP_REGION_DAM(t,n));
 
 
 #____________________________________________________________________________________________
 $elseif.ph %phase%=='after_solve'
 
-TEMP_REGION.l(t,n) = climate_region_coef('alpha_temp',n) + (climate_region_coef('beta_temp',n)) * TATM.l(t);
+TEMP_REGION.l(t,n) = climate_region_coef('alpha_temp',n) + (climate_region_coef('beta_temp',n)) * TATM.l(t) 
+$if set mod_sai $if "%sai_experiment%"=="g6" - DTEMP_REGION_SAI.l(t,n)
+;
 
 $ifthen.exogn set temp_region_exogen
 # Exogenous regional temeperature
@@ -218,6 +229,7 @@ temp_region_valid
 
 # Variables --------------------------------------------
 TEMP_REGION
+PRECIP_REGION
 TEMP_REGION_DAM
 TEMP_REGION_DAM_INCPAST
 

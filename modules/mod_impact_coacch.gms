@@ -47,11 +47,9 @@ comega_slr('none',n,'b2') = 0;
 parameter comega_qmul(*,n,*) 'Damage function quantile multiplier';
 $loaddc comega_qmul
 
-comega_qmul('%dmgcostslr%',n,'p05')$(comega_qmul('%dmgcostslr%',n,'p05') le 0) = 0;
-comega_qmul('%dmgcost%',n,'p05')$(comega_qmul('%dmgcost%',n,'p05') le 0) = 0;
-
-comega_qmul('%dmgcostslr%',n,'p05')$(comega_qmul('%dmgcostslr%',n,'p025') le 0) = 0;
-comega_qmul('%dmgcost%',n,'p05')$(comega_qmul('%dmgcost%',n,'p025') le 0) = 0;
+*since negative values cause issues and not properly estimated keep negative multipliers already at zero
+comega_qmul('%damcost%',n,'%damcostpb%')$(comega_qmul('%damcost%',n,'%damcostpb%') le 0) = 0;
+comega_qmul('%damcostslr%',n,'%damcostpb%')$(comega_qmul('%damcostslr%',n,'%damcostpb%') le 0) = 0;
 
 parameter temp_base(*) 'temperature adjustment for the damage function';
 $loaddc temp_base
@@ -68,9 +66,6 @@ $elseif.ph %phase%=='declare_vars'
 *-------------------------------------------------------------------------------
 $elseif.ph %phase%=='compute_vars'
 
-TATM.lo(t) = tatm0;
-
-
 *-------------------------------------------------------------------------------
 $elseif.ph %phase%=='eql'
 
@@ -80,7 +75,7 @@ eqomega
 $elseif.ph %phase%=='eqs'
 
 **damage function
-eqomega(t,n)$(reg(n) and not tfirst(t))..
+eqomega(t,n)$(reg_all(n) and not tfirst(t))..
                 OMEGA(t,n) =e= comega_qmul('%damcost%',n,'%damcostpb%') *
                                      (comega('%damcost%',n,'b1') * (TATM(t) - temp_base('%damcost%')) +
                                       comega('%damcost%',n,'b2') * (TATM(t) - temp_base('%damcost%'))**2 +

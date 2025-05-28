@@ -14,10 +14,10 @@
 * Definition of the global flags and settings specific to the module
 $ifthen.ph %phase%=='conf'
 
-
-*$setglobal nat_cap_production_function
-*$setglobal welfare_nature
 *$setglobal nat_cap_damages
+
+*$setglobal nat_cap_utility
+*$setglobal nat_cap_prodfun
 
 $setglobal nat_cap_market_dam medium  #low, high
 $setglobal nat_cap_nonmarket_dam medium  #low, high
@@ -25,7 +25,7 @@ $setglobal nat_cap_damfun lin # sq, log
 $setglobal nat_cap_dgvm lpj # all, lpj, car, orc
 
 *activate alternative utility function argument if active
-$if set welfare_nature $setglobal alternative_utility
+$if set nat_cap_utility $setglobal alternative_utility
 
 ## SETS
 #_________________________________________________________________________
@@ -42,6 +42,8 @@ set factor /H, K, mN, nN/;
 set dgvm /all, car, lpj, orc/;
 set formula /lin, log, sq/;
 set damfuncoef /coeff, coeff_ub, coeff_lb/;
+
+set v  'Variables that are actually chacked, others just reported' / NAT_CAP_DAM_market, NAT_CAP_DAM_nonmarket /
 
 ## INCLUDE DATA
 #_________________________________________________________________________
@@ -61,11 +63,7 @@ Parameters natural_capital_aggregate(n,factor),
 
 Parameter theta(n), nat_cap_utility_share(n);
 
-Parameter nat_omega(type,t, n);
-Parameter nat_cap_dam_pc(type,t, n);
-
 Parameter natural_capital_global_elasticity(n);
-Scalar gnn 'Global sum of nonmarket natural capital [Trillion 2005 USD]';
 
 $gdxin '%datapath%data_mod_natural_capital.gdx'
 $load natural_capital_aggregate natural_capital_elasticity natural_capital_global_elasticity
@@ -97,18 +95,11 @@ prodshare('labour', n) = natural_capital_elasticity(n, 'H');
 prodshare('capital', n) = natural_capital_elasticity(n, 'K');
 prodshare('nature', n) = natural_capital_elasticity(n, 'mN');
 
-$ifthen.prod not set nat_cap_production_function
-prodshare('labour', n) = prodshare('labour', n) + prodshare('nature', n);
-prodshare('nature', n) = 0;
-$endif.prod
-
 #parameters for utility from natural capital (amenity value)
 #Source: average of estimates compiled by Drupp (2018) and GreenDICE
 theta(n) = .58;
 $setglobal nat_cap_utility_share 10   #s=0.1 following Hoel and Sterner (2007) and GreenDICE
 nat_cap_utility_share(n) = %nat_cap_utility_share%/100;
-
-gnn = sum(n, natural_capital_aggregate(n,'nN'));
 
 ##  COMPUTE DATA
 #_________________________________________________________________________
@@ -117,17 +108,16 @@ gnn = sum(n, natural_capital_aggregate(n,'nN'));
 $elseif.ph %phase%=='compute_data'
 
 * retrieve tfp from reverting Y-I-L process now getting TFP from standard RICE
-loop(t,
+loop((t,tp1)$pre(t,tp1),
    # Investments
    i_tfp(t,n)  =  fixed_savings(t,n)  * ykali(t,n)   ;
    # Capital
-   k_tfp(t+1,n)  =  ((1-dk)**tstep) * k_tfp(t,n)  +  tstep * i_tfp(t,n)  ;
+   k_tfp(tp1,n)  =  ((1-dk)**tstep) * k_tfp(t,n)  +  tstep * i_tfp(t,n)  ;
    # TFP of current scenario (explicited from Cobb-Douglas prod. function)
-   tfp_orig(t,n)  =  ykali(t,n) / ( ( (
-$if set mod_government         (working_hours('1',n)/5278 * (employment_rate('1',n)/100))*
-                               pop(t,n)/1000)**prodshare('labour', n) )*(k_tfp(t,n)**prodshare('capital', n) ) )
+   tfp_orig(t,n)  =  ykali(t,n) / ( ( ( pop(t,n)/1000)**prodshare('labour', n) )*(k_tfp(t,n)**prodshare('capital', n) ) )
                                ;
 );
+tfp_orig(t,n)$tlast(t) = sum(tt$pre(tt,t), tfp_orig(tt,n));
 *Now match initial period GDP basd on natural capital, and keep from then growth rate from original TFP
 *tfp(t,n) = tfp_orig(t,n) * (tfp(t,n) / tfp_orig(t,n));
 
@@ -143,7 +133,7 @@ POSITIVE VARIABLE NAT_CAP_DAM(type,t,n) 'Natural Capital after damages [Trill 20
 POSITIVE VARIABLE NAT_INV(type,t,n) 'Investment in Natural Capital';
 POSITIVE VARIABLE NAT_CAP_BASE(type,t,n) 'Natural Capital';
 POSITIVE VARIABLE GLOBAL_NN(t,n)  'Sum of nonmarket natural capital, global [Trill 2005 USD]';
-*POSITIVE VARIABLE GLOBAL_NN(t)  'Sum of nonmarket natural capital global [Trill 2005 USD]';
+
 ##  COMPUTE VARIABLES
 #_________________________________________________________________________
 * In the phase COMPUTE_VARS, you fix starting points and bounds.
@@ -156,20 +146,18 @@ NAT_CAP.fx('market','1',n) = natural_capital_aggregate(n,'mN');
 NAT_CAP.fx('nonmarket','1',n) = natural_capital_aggregate(n,'nN');
 NAT_CAP_DAM.fx('nonmarket','1',n) = NAT_CAP.l('nonmarket','1',n);
 
-*NAT_OMEGA.lo(type,t,n) = 1-0.1;
-*NAT_OMEGA.up(type,t,n) = 1+0.1;
-
-*NAT_OMEGA.fx('nonmarket',t,n) = 1;
-
 #for now zero investment
 NAT_INV.fx(type,t,n) = 0;
 
 #depreciation 
 dknat = 0.0;
 
-TATM.lo(t) = TATM.l('1');
-
-GLOBAL_NN.l(t,n) = gnn;
+#give starting values
+NAT_CAP.l('market',t,n) = natural_capital_aggregate(n,'mN');
+NAT_CAP.l('nonmarket',t,n) = natural_capital_aggregate(n,'nN');
+NAT_CAP_DAM.l('nonmarket',t,n) = natural_capital_aggregate(n,'nN');
+GLOBAL_NN.l(t,n) = sum(nn, NAT_CAP_DAM.l('nonmarket',t,nn));
+NAT_CAP_DAM.l('market',t,n) = natural_capital_aggregate(n,'mN');
 
 #=========================================================================
 *   ///////////////////////     OPTIMIZATION    ///////////////////////
@@ -196,17 +184,17 @@ eq_gnn
 $elseif.ph %phase%=='eqs'
 
 * Capital according to depreciation and investments
-eq_NAT_CAP(type,t+1,n)$reg(n).. NAT_CAP(type, t+1,n)  =E=  ((1-dknat)**tstep * NAT_CAP(type,t,n) ) + tstep * NAT_INV(type,t,n);
+eq_NAT_CAP(type,t,tp1,n)$(reg(n) and pre(t,tp1)).. NAT_CAP(type, tp1,n)  =E=  ((1-dknat)**tstep * NAT_CAP.l(type,t,n) ) + tstep * NAT_INV.l(type,t,n);
 
-$ifthen.es set es_prodfun
+$ifthen.es set nat_cap_prodfun
 eq_es_prodfun_mN('market',t,n)$reg(n).. NAT_CAP_BASE('market',t,n) =E= NAT_CAP('market',t,n);
 eq_es_prodfun_nN('nonmarket',t,n)$reg(n).. NAT_CAP_BASE('nonmarket',t,n) =E= 
-      NAT_CAP.l('nonmarket','1',n) * ((prod(tt,RI.l(tt,n)+1))**(1/card(t))-1) *
+      NAT_CAP.l('nonmarket','1',n) * ((prod(tt,RI.l(tt,n)+1))**(1/smax(tt,tperiod(tt)))-1) *
       (pop(t,n)/1000)**prodshare('labour',n) * K.l(t,n)**prodshare('capital',n) * NAT_CAP.l('nonmarket',t,n)**prodshare('nature',n) /
       [(pop('1',n)/1000)**prodshare('labour',n) * K.l('1',n)**prodshare('capital',n) * NAT_CAP.l('nonmarket','1',n)**prodshare('nature',n)];
 $else.es
-eq_es_prodfun_mN('market',t,n)$reg(n).. NAT_CAP_BASE('market',t,n) =E= NAT_CAP.l('market',t,n);
-eq_es_prodfun_nN('nonmarket',t,n)$reg(n).. NAT_CAP_BASE('nonmarket',t,n) =E= NAT_CAP.l('nonmarket',t,n);
+eq_es_prodfun_mN('market',t,n)$reg(n).. NAT_CAP_BASE('market',t,n) =E= NAT_CAP('market',t,n);
+eq_es_prodfun_nN('nonmarket',t,n)$reg(n).. NAT_CAP_BASE('nonmarket',t,n) =E= NAT_CAP('nonmarket',t,n);
 $endif.es
 
 
@@ -226,14 +214,14 @@ $else.damfun
 $endif.damfun
 );
 
-$ifthen.ut set welfare_nature
+$ifthen.ut set nat_cap_utility
    eq_utility_arg(t,n)$reg(n).. UTARG(t,n) =E= [
                                                 (1-nat_cap_utility_share(n)) * ( CPC(t,n)**theta(n) ) +
                                                 nat_cap_utility_share(n) * ( (NAT_CAP_DAM('nonmarket',t,n) / pop(t,n)*1e6)**theta(n) )
                                                 ]**(1/theta(n)) ;
 $endif.ut
 
-eq_gnn(t,n)$reg(n).. GLOBAL_NN(t,n) =E= NAT_CAP_DAM('nonmarket',t,n) + sum( nn$(not reg(nn)),  NAT_CAP_DAM.l('nonmarket',t,nn));
+eq_gnn(t,n)$reg(n).. GLOBAL_NN(t,n) =E= NAT_CAP_DAM('nonmarket',t,n) + sum(nn$(not reg(nn)),  NAT_CAP_DAM.l('nonmarket',t,nn));
 
 ##  FIX VARIABLES
 #_________________________________________________________________________
@@ -260,23 +248,10 @@ $elseif.ph %phase%=='before_solve'
 * regions after one bunch of parallel solving.
 $elseif.ph %phase%=='after_solve'
 
-nat_omega(type,t,n) = 1 * (
-$ifthen.damfun set nat_cap_damages
-   1 + natural_capital_damfun(type, '%nat_cap_dgvm%', '%nat_cap_damfun%',n,'coeff') * 
-$ifthen.damfuntwo '%nat_cap_damfun%'=='lin'   
-      (TATM.l(t) - TATM.l('1'))
-$elseif.damfuntwo '%nat_cap_damfun%'=='log'   
-      log(1 + TATM.l(t) - TATM.l('1'))
-$elseif.damfuntwo '%nat_cap_damfun%'=='sq'    
-      (TATM.l(t) - TATM.l('1'))**2
-$endif.damfuntwo
-$else.damfun
-   1
-$endif.damfun
-);
-nat_cap_dam_pc(type,t,n) = 1000 * NAT_CAP_DAM.l(type,t,n) / pop(t,n);
-
 GLOBAL_NN.l(t,n) = sum(nn,NAT_CAP_DAM.l('nonmarket',t,nn));
+
+viter(iter,'NAT_CAP_DAM_nonmarket',t,n)$nsolve(n)   = NAT_CAP_DAM.l('nonmarket',t,n); 
+viter(iter,'NAT_CAP_DAM_market',t,n)$nsolve(n)      = NAT_CAP_DAM.l('market',t,n); 
 
 #===============================================================================
 *     ///////////////////////     REPORTING     ///////////////////////
@@ -308,9 +283,5 @@ natural_capital_damfun
 natural_capital_elasticity
 theta
 nat_cap_utility_share
-nat_omega
-nat_cap_dam_pc
-nat_cap_base
-gnn
 
 $endif.ph

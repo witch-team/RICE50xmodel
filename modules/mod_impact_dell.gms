@@ -115,27 +115,27 @@ $elseif.ph %phase%=='eqs'
 
 ##  DJO'S IMPACT --------------------------------------
 * DJO's yearly local impact
- eq_djoimpact(t,n)$(reg(n) and not tfirst(t))..  DJOIMPACT(t,n)  =E=  beta_djo('T',n,t) * (TEMP_REGION_DAM(t,n)-climate_region_coef('base_temp',n))  ;             
+ eq_djoimpact(t,n)$(reg_all(n) and not tfirst(t))..  DJOIMPACT(t,n)  =E=  beta_djo('T',n,t) * (TEMP_REGION_DAM(t,n)-climate_region_coef('base_temp',n))  ;             
 
 # OMEGA FULL
 $ifthen.omg %omega_eq% == 'full'
 * Omega full formulation
- eq_omega(t,n)$(reg(n) and not tlast(t))..  OMEGA(t+1,n)  =E=  (  (1 + (OMEGA(t,n)))
+ eq_omega(t,tp1,n)$(reg_all(n) and pre(t,tp1) and not tlast(t))..  OMEGA(tp1,n)  =E=  (  (1 + (OMEGA(t,n)))
                                                                             #  TFP factor
-                                                                            *  (tfp(t+1,n)/tfp(t,n))
+                                                                            *  (tfp(tp1,n)/tfp(t,n))
                                                                             #  Pop factor
-                                                                            *  ((( pop(t+1,n)/1000  )/( pop(t,n)/1000 ))**prodshare('labour',n)) * (pop(t,n)/pop(t+1,n))
+                                                                            *  ((( pop(tp1,n)/1000  )/( pop(t,n)/1000 ))**prodshare('labour',n)) * (pop(t,n)/pop(tp1,n))
                                                                             #  Capital-Omega factor
                                                                             *  KOMEGA(t,n)
                                                                             #  BHM impact on pc-growth
                                                                             /  ((1 + basegrowthcap(t,n) +  DJOIMPACT(t,n)   )**tstep)
                                                                         ) - 1  ;
 * Capital-Omega factor
- eq_komega(t,n)$(reg(n))..  KOMEGA(t,n)  =E=  ( (((1-dk)**tstep) * K(t,n)  +  tstep * S(t,n) * tfp(t,n) * (K(t,n)**prodshare('capital',n)) * ((pop(t,n)/1000)**prodshare('labour',n)) * (1/(1+OMEGA(t,n))) ) / K(t,n) )**prodshare('capital',n)  ;
+ eq_komega(t,n)$(reg_all(n))..  KOMEGA(t,n)  =E=  ( (((1-dk)**tstep) * K(t,n)  +  tstep * S(t,n) * tfp(t,n) * (K(t,n)**prodshare('capital',n)) * ((pop(t,n)/1000)**prodshare('labour',n)) * (1/(1+OMEGA(t,n))) ) / K(t,n) )**prodshare('capital',n)  ;
 # OMEGA SIMPLE
 $else.omg
 * Omega-simple formulation
- eq_omega(t,n)$(reg(n)  and not tlast(t))..  OMEGA(t+1,n)  =E=  (  (1 + (OMEGA(t,n))) / ((1 + DJOIMPACT(t,n))**tstep)  ) - 1  ;
+ eq_omega(t,tp1,n)$(reg_all(n) and pre(t,tp1) and not tlast(t))..  OMEGA(tp1,n)  =E=  (  (1 + (OMEGA(t,n))) / ((1 + DJOIMPACT(t,n))**tstep)  ) - 1  ;
 $endif.omg
 
 

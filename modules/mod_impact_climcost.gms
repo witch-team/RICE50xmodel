@@ -47,7 +47,7 @@ eqomega
 $elseif.ph %phase%=='eqs'
 
 **damage function
-eqomega(t,n)$(reg(n) and not tfirst(t))..
+eqomega(t,n)$(reg_all(n) and not tfirst(t))..
                 OMEGA(t,n) =e= 1 *
                                      (comega('%damcost%',n,'b1') * (TATM(t) - temp_base('%damcost%')) +
                                       comega('%damcost%',n,'b2') * (TATM(t) - temp_base('%damcost%'))**2 +

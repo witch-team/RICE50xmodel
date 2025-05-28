@@ -32,17 +32,17 @@ $ifthen.ph %phase%=='conf'
 $If not exist "%datapath%data_mod_inequality_converted.gdx" $abort "Please run the translate_rice50x_data.R script again, uncommenting the last line ["source('input/convert_mod_inequality.R')]""
 
 * Omega: takes values between 0 and 2
-* 1 is the neutral value
+* 1 is the neutral value (divided by 10)
 $setglobal omega 05
 
 * Elasticity to damages across quantiles: takes values between [-1;+1]
-* 1 is the neutral value
+* 1 is the neutral value (didived by 100)
 $setglobal xi 85
 
-* Elasticity of redistribution across quantiles for exogenous transfer schemes
+* Elasticity of redistribution across quantiles for exogenous transfer schemes (divided by 10)
 $setglobal el_redist 0
 
-* Internal inequality aversion
+* Internal inequality aversion (divided by 100)
 * Range: [0,1.5]; good options: | 0 | 0.5 | 1.45
 $setglobal gammaint 50
 
@@ -138,7 +138,7 @@ y_dist_min(t,n,dist) = subsistance_level * quant_share(dist) * pop(t,n) * 1e-6;
 
 quantiles_ref(t,n,dist) = quantiles_ref_ssp('%baseline%',t,n,dist); 
 #constant after 2100
-quantiles_ref(t,n,dist)$(ord(t) gt 18) = quantiles_ref_ssp('%baseline%','18',n,dist); 
+quantiles_ref(t,n,dist)$(tperiod(t) gt 18) = valuein(2100, quantiles_ref_ssp('%baseline%',tt,n,dist)); 
 
 #compute weights of the burden share per quantile of damages and abatement
 ineq_weights(t,n,dist,ineq_elast) = ( quantiles_ref(t,n,dist) ** el_coeff(ineq_elast) ) / sum(ddist, quantiles_ref(t,n,ddist) ** el_coeff(ineq_elast) ) ;
@@ -171,7 +171,6 @@ Y_DIST_PRE.l(t,n,dist) = YGROSS_DIST.l(t,n,dist);
 Y_DIST.l(t,n,dist) = YGROSS_DIST.l(t,n,dist);
 CPC_DIST.l(t,n,dist) = 1e6 * Y_DIST.l(t,n,dist) * ( 1 - S.l(t,n) ) / ( pop(t,n) * quant_share(dist) );
 TRANSFER.l(t,n,dist) = 0;
-CTX.l(t,n) = EIND.l(t,n)*CPRICE.l(t,n)*1e-3;
 
 ##  COMPUTE VARIABLES
 #_________________________________________________________________________
@@ -220,19 +219,24 @@ eq_ygrossdist(t,n,dist)$reg(n)..    YGROSS_DIST(t,n,dist) =E=
 eq_ynetdist_unbnd(t,n,dist)$reg(n).. 
                                     YNET_DIST(t,n,dist) =E=
                                         YGROSS_DIST(t,n,dist)                                         
-                                        - DAMAGES(t,n) * ineq_weights(t,n,dist,'damages'); 
+$ifthen.dmg set mod_impact_deciles
+                                        - DAMAGES_DIST(t,n,dist) 
+$else.dmg
+                                        - DAMAGES(t,n) * ineq_weights(t,n,dist,'damages')
+$endif.dmg
+; 
 
 eq_ydist_unbnd(t,n,dist)$reg(n)..   Y_DIST_PRE(t,n,dist) =E=
                                         YNET_DIST(t,n,dist) -
-$if not set ctax_marginal               ctax_corrected(t,n) * 1e-3 * (E(t,n) - E.l(t,n)) * quantiles_ref(t,n,dist) -
-                                        ( ABATECOST(t,n) + CTX(t,n) ) * ineq_weights(t,n,dist,'abatement')
+$if not set ctax_marginal               sum(ghg,ctax_corrected(t,n,ghg) * convy_ghg(ghg) * (E(t,n,ghg) - E.l(t,n,ghg)) * quantiles_ref(t,n,dist) ) -
+                                        ( sum(ghg,ABATECOST(t,n,ghg)) + CTX(t,n) ) * ineq_weights(t,n,dist,'abatement')
 ;                                         
 
 eq_ydist(t,n,dist)$reg(n)..         Y_DIST(t,n,dist) =E=
                                         Y_DIST_PRE(t,n,dist) 
                                         + TRANSFER(t,n,dist);
 
-eq_ctx(t,n)$reg(n)..                CTX(t,n) =E= CPRICE(t,n) * EIND(t,n) * 1e-3;
+eq_ctx(t,n)$reg(n)..                CTX(t,n) =E= sum(ghg, MAC(t,n,ghg) * EIND(t,n,ghg) * convy_ghg(ghg) );
 
 *computes consumption per capita per quantile
 eq_cpcdist(t,n,dist)$reg(n)..       CPC_DIST(t,n,dist) =E= 
@@ -290,7 +294,7 @@ Parameter quantiles(t,n,dist);
 quantiles(t,n,dist) = ( CPC_DIST.l(t,n,dist) * quant_share(dist) ) / ( CPC.l(t,n) );
 
 Parameter abatecost_dist(t,n,dist);
-abatecost_dist(t,n,dist) = ABATECOST.l(t,n) * ineq_weights(t,n,dist,'abatement'); 
+abatecost_dist(t,n,dist) = sum(ghg, ABATECOST.l(t,n,ghg)) * ineq_weights(t,n,dist,'abatement'); 
 
 $ifthen.cd set calib_damages
 #needed for calib_damages
