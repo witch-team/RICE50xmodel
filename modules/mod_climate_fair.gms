@@ -298,7 +298,7 @@ eq_forco3trop(t)..      ORF('o3trop',t) =E= 1.74e-4 * (CONC('ch4',t) - conc_prei
 eq_forcoghg(oghg,t)..     RF(oghg,t) =E=  (CONC(oghg,t) - conc_preindustrial(oghg)) * forcing_coeff(oghg);
 
 eq_forcing(t)..           FORC(t) =E= sum(ghg, RF(ghg,t) ) + sum(climagents,ORF(climagents,t)) + forcing_exogenous(t) 
-$if set mod_sai $if "%sai_experiment%"=="g0" + geoeng_forcing * W_SAI(t)
+$if set mod_sai + geoeng_forcing * W_SAI(t)
 ;
 
 ** forcing to temperature 
@@ -320,7 +320,7 @@ $elseif.ph %phase%=='after_solve'
 
 W_EMI.fx(ghg,t) = W_EMI.l(ghg,t);
 FF_CH4.fx(t) = FF_CH4.l(t);
-$if set mod_sai $if "%sai_experiment%"=="g0" W_SAI.fx(t) = sum(n,N_SAI.l(t,n));
+$if set mod_sai W_SAI.fx(t) = sum(n,N_SAI.l(t,n));
 
 solve fair using cns; 
 
@@ -328,8 +328,7 @@ W_EMI.lo(ghg,t) = -inf;
 W_EMI.up(ghg,t) = inf;
 FF_CH4.lo(t) = 0;
 FF_CH4.up(t) = 1;
-$if set mod_sai $if "%sai_experiment%"=="g0" W_SAI.lo(t) = 0;
-$if set mod_sai $if "%sai_experiment%"=="g0" W_SAI.up(t) = +inf;
+$if set mod_sai W_SAI.lo(t) = 0; W_SAI.up(t) = +inf;
 
 viter(iter,'TATM',t,n)$nsolve(n) = TATM.l(t);  # Keep track of last temperature values
 

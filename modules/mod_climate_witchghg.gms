@@ -164,7 +164,7 @@ eq_rf_oghg(oghg,t)..   RF(oghg,t)  =E=  rfc(oghg,'inter') * rfc(oghg,'fac')
 
 * Total radiative forcing
 eq_forc(t)..   FORC(t)  =E=  sum(ghg, RF(ghg,t)) + rfaerosols(t)
-$if set mod_sai $if "%sai_experiment%"=="g0" + geoeng_forcing * W_SAI(t)
+$if set mod_sai + geoeng_forcing * W_SAI(t)
 ;
 
 * Global temperature increase from pre-industrial levels                       
@@ -188,7 +188,7 @@ $elseif.ph %phase%=='after_solve'
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 W_EMI.fx(ghg,t) = W_EMI.l(ghg,t);
-$if set mod_sai $if "%sai_experiment%"=="g0" W_SAI.fx(t) = sum(n,N_SAI.l(t,n));
+$if set mod_sai W_SAI.fx(t) = sum(n,N_SAI.l(t,n));
 
 solve witchghg using cns;
 
@@ -196,8 +196,7 @@ solve witchghg using cns;
 W_EMI.lo(ghg,t) = -inf;
 W_EMI.up(ghg,t) = inf;
 
-$if set mod_sai $if "%sai_experiment%"=="g0" W_SAI.lo(t) = 0;
-$if set mod_sai $if "%sai_experiment%"=="g0" W_SAI.up(t) = +inf;
+$if set mod_sai W_SAI.lo(t) = 0; W_SAI.up(t) = +inf;
 
 viter(iter,'TATM',t,n)$nsolve(n) = TATM.l(t);  # Keep track of last temperature values
 

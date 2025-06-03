@@ -9,6 +9,7 @@ $ifthen.ph %phase%=='conf'
 $setglobal can_deploy "no" #all, wp, no, coal, region_name
 $setglobal sai "free" # free, max_efficiency, sovereign, tropics, equator
 $setglobal sai_experiment "g6" # options: g0 (uniform reduction of solar constant) | emulator
+$if %sai_experiment%=="g0" $setglobal sai_damage_coef 0.03 #damage coefficient for g0 experiment, 3% of GDP loss for 12 TgS/yr SAI injection
 $if %cooperation%=="coalitions" $setglobal sel_coalition "sai"
 $if %cooperation%=="coalitions" $setglobal can_deploy "coal" 
 
@@ -58,12 +59,12 @@ $elseif.ph %phase%=='include_data'
 *                 - this is the only phase where we should have numbers...
 
 * Costs: 5 (Robock 2009) - 25 (Cruzen 2006) billion US/TgS
-* Forcing: -0.5 (Cruzen 2006) up to -2.5 (Rasch 2008) W/m^2/TgS (see also Gramstad and Tjotta (2010)
+* Forcing: -0.2 W/m^2/TgS
 * Atmospheric residence time: not relevant for dynamics due to 5 year time step, but lowers cost!
 * 1Tg = 1MT. 1gr S = 2gr SO2
 Parameters
         sai_cost_tgs              'costs in billion USD per TgS'          / 10 /
-        geoeng_forcing          'negative forcing per TgS'          / -1.75 /
+        geoeng_forcing            'negative forcing per TgS'          / -0.2 /
         geoeng_residence_in_atm   'atmospheric residence time in yrs' / 2  /;
 
 * compute actual cost per year taking into account the atmospheric residence time, disregarding initialisation.
@@ -83,8 +84,9 @@ Scalar max_warming_projected 'Max warming per period' /0.2/; #this works for SSP
 Parameter start_geo(n); 
 start_geo(n) = %geoeng_start%;
 
-parameter damage_geoeng_amount(n);
-damage_geoeng_amount(n) = 0.03;
+parameter damage_geoeng_amount(n) '% GDP loss for 12 TgS/yr SAI injection';
+damage_geoeng_amount(n) = 0;
+$if set sai_damage_coef damage_geoeng_amount(n) = %sai_damage_coef%;
 
 ** global temperature change from 12tGS/yr SAI single-point injection 
 parameter sai_temp_global(inj) /"60S" 0.95,
@@ -100,6 +102,9 @@ parameter sai_temp_global(inj) /"60S" 0.95,
 *------------------------------------------------------------------------
 $elseif.ph %phase%=='compute_data'
  
+* deactivate global forcing channel if emulator is activated
+$if %sai_experiment%=="g6" geoeng_forcing = 0;
+
 sai_only_region(t,n,inj) = 0;
 sai_temp(n,inj) = 0;
 sai_precip(n,inj) = 0;
@@ -199,6 +204,8 @@ W_SAI.lo(t) = 0;
 SAI.fx(t,n,inj)$(not (year(t) ge start_geo(n) and year(t) le %geoeng_end% and belong_inj(n,inj)))=0;
 SAI.l(t,n,inj)$(not (year(t) ge start_geo(n) and year(t) le %geoeng_end% and belong_inj(n,inj)) )=0;
 N_SAI.fx(t,n)$(not (year(t) ge start_geo(n) and year(t) le %geoeng_end% and can_inject(n)) )=0; # necessary for g0
+
+$if %sai_experiment%=="g0" DTEMP_REGION_SAI.fx(t,n) = 0; DPRECIP_REGION_SAI.fx(t,n) = 0; SAI.fx(t,n,inj)=0; Z_SAI.fx(t,inj) = 0; # no regional effects in g0 experiment
 
 *------------------------------------------------------------------------------
 $elseif.ph %phase%=='eql'
@@ -338,6 +345,8 @@ DTEMP_REGION_SAI
 DPRECIP_REGION_SAI
 COST_SAI
 
+geoeng_forcing
+damage_geoeng_amount
 sai_temp
 sai_precip
 belong_inj

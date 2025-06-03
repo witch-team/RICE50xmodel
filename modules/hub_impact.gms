@@ -14,7 +14,7 @@ $ifthen.ph %phase%=='conf'
 * GDP baseline multiplier (i.e., max_gain=2 -> maximum gains are 2x GDPbase)
 *$setglobal damage_cap
 $setglobal max_gain    1
-$setglobal max_damage  0.6
+$setglobal max_damage  0.9
 
 * for threshold/catastrophic damage
 *$setglobal threshold_damage
@@ -30,10 +30,6 @@ $setglobal gradient_d 0.01 # (% of GDP)
 #_________________________________________________________________________
 $elseif.ph %phase%=='include_data'
 
-Scalar a_prec /0/; #by default, no impacts from precipitation
-Scalar b_prec /2/; #only integers
-Scalar delta_prec /1e-3/;
- 
 ##  COMPUTE DATA
 #_________________________________________________________________________
 $elseif.ph %phase%=='compute_data'
@@ -48,7 +44,6 @@ VARIABLES
     OMEGA(t,n)               'Economic impact from the impact function from Climate Change [% of GDP]'
     DAMAGES(t,n)             'Damages [Trill 2005 USD / year] (negative values are gains)'
     DAMFRAC(t,n)             'Damages as GDP Gross fraction [%GDPgross]: (negative values are gains)'
-    DAMFRAC_PREC(t,n)        ''
     DAMFRAC_UNBOUNDED(t,n)   'Potential unbounded damages, as % of gross GDP (negative values are gains)'
     DAMFRAC_UPBOUND(t,n)     'Potential GDP, net of damages, bounded in maximum gains [Trill 2005 USD / year]'
 ;
@@ -68,7 +63,7 @@ SCALAR   delta  /1e-2/ ; #-14 more than 1e-8 get solver stucked
 
 ##  STABILITY CONSTRAINTS ------------------------------
 * to avoid errors/help the solver to converge
-OMEGA.lo(t,n) = (-1 + 1e-5) ; # needed because of eq_komega
+$if %omega_eq% == 'full' OMEGA.lo(t,n) = (-1 + 1e-5) ; # needed because of eq_komega
 
 DAMFRAC.lo(t,n) = - %max_gain% - delta;
 DAMFRAC.up(t,n) = %max_damage% + delta;
@@ -78,8 +73,6 @@ OMEGA.fx(tfirst,n)  = 0 ;
 DAMFRAC_UNBOUNDED.fx(tfirst,n) = 0;
 
 $if %impact%=="off" OMEGA.fx(t,n) = 0;
-DAMFRAC_PREC.lo(t,n) = - delta_prec;
-DAMFRAC_PREC.up(t,n) = 1 - delta_prec;
 
 #=========================================================================
 *   ///////////////////////     OPTIMIZATION    ///////////////////////
@@ -105,7 +98,7 @@ $if set mod_adaptation             / ( 1 + (Q_ADA('ada',t,n)**ces_ada('exp',n))$
 ) ) )
 $if set threshold_damage              + %threshold_d% * errorf( (TATM(t) - %threshold_temp%)/%threshold_sigma%)
 $if set gradient_damage               + (%gradient_d% * power( ( sqrt(sqr((TATM(t) - TATM(tm1))) + sqr(delta)) / 0.35) , 4))$(not tlast(t))
-$if set mod_sai $if "%sai_experiment%"=="g0" + damage_geoeng_amount(n) * power(-geoeng_forcing*W_SAI(t) / 3.5,2)
+$if set mod_sai                       + damage_geoeng_amount(n) * power(W_SAI(t) / 12,2)
 ;
 
 $ifthen.dc set damage_cap
@@ -137,7 +130,6 @@ OMEGA
 DAMAGES
 DAMFRAC
 DAMFRAC_UNBOUNDED
-DAMFRAC_PREC
 
 $endif.ph
 

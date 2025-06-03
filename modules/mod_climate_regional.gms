@@ -134,7 +134,7 @@ $ifthen.exogn not set temp_region_exogen
 # Endogenous regional temperature downscaler
  eq_temp_region(t,n)$(reg_all(n))..
     TEMP_REGION(t,n) =E= climate_region_coef('alpha_temp',n) + (climate_region_coef('beta_temp',n)) * TATM(t)
-$if set mod_sai $if "%sai_experiment%"=="g6"    -  DTEMP_REGION_SAI(t,n)
+$if set mod_sai -  DTEMP_REGION_SAI(t,n)
     ;
 $else.exogn
 # Exogenous regional temeperature
@@ -145,7 +145,7 @@ $endif.exogn
  eq_precip_region(t,n)$(reg_all(n))..
     PRECIP_REGION(t,n) =E= 
     ( climate_region_coef('alpha_precip',n) + climate_region_coef('beta_precip',n) * TATM(t) ) * 12 * ( 1 
-$if set mod_sai $if "%sai_experiment%"=="g6"     +   DPRECIP_REGION_SAI(t,n) 
+$if set mod_sai +   DPRECIP_REGION_SAI(t,n) 
     );
 
 $ifthen.tempcap set temp_region_cap
@@ -175,7 +175,7 @@ $endif.tempcap
 $elseif.ph %phase%=='after_solve'
 
 TEMP_REGION.l(t,n) = climate_region_coef('alpha_temp',n) + (climate_region_coef('beta_temp',n)) * TATM.l(t) 
-$if set mod_sai $if "%sai_experiment%"=="g6" - DTEMP_REGION_SAI.l(t,n)
+$if set mod_sai - DTEMP_REGION_SAI.l(t,n)
 ;
 
 $ifthen.exogn set temp_region_exogen
