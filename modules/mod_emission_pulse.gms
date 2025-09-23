@@ -2,7 +2,7 @@
 * Module to compute the Social Cost of Carbon via an emission pulse
 * after any witch run, run it with --mod_emission_pulse=ssp2_cba_noncoop --cooperation=coop and specify your existing results file (without "_results")
 * First version: February 18th, 2019, Author: J. Emmerling
-* All SCCs in the current year, to convert from 2005 to 2020 USD, multiply by the deflator 1.302318665
+* All SCCs in the current year, to convert from 2005 to 2020 USD, multiply by the deflator 1.298763
 * takes the run (be sure to specify the originally used impact and climate modules!)
 * MIU and S are fixed to the loaded file values
 * all Social costs expressed in $(2005)/tCO2eq
@@ -20,6 +20,9 @@ $setglobal gamma 0
 $setglobal emission_pulse 1 #unit is MtCO2eq
 $setglobal nameout %mod_emission_pulse%_emission_pulse
 $setglobal output_filename results_%nameout%
+
+*define reference file for marginal utility (by default nopulse file)
+$if not set reference_marg_util $setglobal reference_marg_util %mod_emission_pulse%
 
 *-------------------------------------------------------------------------------
 $elseif.ph %phase%=='sets'
@@ -59,6 +62,7 @@ variable K_nopulse(t,n);
 variable I_nopulse(t,n);
 variable TATM_nopulse(t);
 variable MIU_nopulse(t,n,ghg);
+variable UTARG_nopulse(t,n);
 parameter tfp_nopulse(t,n);
 parameter scc_nopulse(t,n,ghg);
 $gdxin '%resdir%results_%mod_emission_pulse%'
@@ -73,7 +77,14 @@ $loaddc I_nopulse=I
 $loaddc TATM_nopulse=TATM
 $loaddc scc_nopulse=scc
 $loaddc MIU_nopulse=MIU
+$loaddc UTARG_nopulse=UTARG
 $loaddc tfp_nopulse=tfp
+$gdxin
+
+*read variables used for reference marginal utility computations
+parameter marg_util_cons_reference(t,n);
+$gdxin '%resdir%results_%reference_marg_util%'
+$loaddc marg_util_cons_reference=marg_util_cons
 $gdxin
 
 *-------------------------------------------------------------------------------
@@ -108,7 +119,7 @@ Parameter scc_pulse_ramsey_only_regional(tref,nref);
 damrt(t,n) = -(C.l(t,n) - C_nopulse.l(t,n)); #positive values = damages in T$
 tatm_difference(t)= TATM.l(t) - TATM_nopulse.l(t);
 
-#for now compute SCC along the baseline, i.e., using arguments of welfare function at original level
+*for now compute SCC along the baseline, i.e., using arguments of welfare function at original level
 C.l(t,n) = C_nopulse.l(t,n);
 
 #compute SCC (as in Rennert et al. (2022)) using global SDF
@@ -121,6 +132,17 @@ scc_pulse_ramsey_global(tref,nref) =
             * (1e3)
        )
 ;
+
+#now overwritten using UTARG directly
+scc_pulse_ramsey_global(tref,nref) =
+  (sum(t$(year(t) ge year(tref)),
+             (rr(t)*(sum(nn,C.l(t,nn)) / sum(nn,pop(t,nn)))**(-elasmu)) / (rr(tref)*(sum(nn,C.l(tref,nn)) / sum(nn,pop(tref,nn)))**(-elasmu))
+             * sum(nn, pop(t,nn)/sum(nnn,pop(t,nnn)) * ((UTARG_nopulse.l(t,nn)**(1-elasmu)-UTARG.l(t,nn)**(1-elasmu))/(1-elasmu)) / (marg_util_cons_reference(t,nn) ) )
+             * sum(nnn,pop(t,nnn)))
+           / (%emission_pulse%)
+            )
+;
+
 
 #compute SCC (as in Rennert et al. (2022)) using global SDF, regional contribution of each region's impacts
 scc_pulse_ramsey_global_regshare(tref,nref) =
@@ -164,6 +186,12 @@ scc_pulse_discounted_global('3.5',tref,n) = (sum((t)$(year(t) ge year(tref)), da
 scc_pulse_discounted_global('5',tref,n) = (sum((t)$(year(t) ge year(tref)), damrt(t,n) * (1+0.05)**(-(year(t)-year(tref))) ) / (%emission_pulse%*1e-3)) * 1e3; # in T$/GtCO2 to $/tCO2eq, just simple discounted value
 
 
+#Just for quick analysis display standard global SCC for 2020 in US-$[2020] using US-$ GDP deflator 1.298763
+Parameters scc2020;
+scc2020          = 1.298763 * valuein(2020, sum(nn,scc_pulse_ramsey_global(tt,nn))/sum(nn,1));
+display scc2020;
+
+
 $elseif.ph %phase%=='gdx_items'
 C_nopulse
 YGROSS_nopulse
@@ -173,6 +201,7 @@ E_nopulse
 EIND_nopulse
 TATM_nopulse
 MIU_nopulse
+UTARG_nopulse
 emission_pulse
 scc_nopulse
 damrt
@@ -182,5 +211,6 @@ scc_pulse_ramsey_global_regshare
 scc_pulse_discounted_global
 scc_pulse_ramsey_global_regionalref
 scc_pulse_ramsey_only_regional
+marg_util_cons_reference
 
 $endif.ph

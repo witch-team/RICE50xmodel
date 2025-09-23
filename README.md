@@ -58,6 +58,7 @@ What follows is a summary of main model settings. **Bold** elements are model de
 | `impact` | off dice burke dell \*\*kalkuhl\*\* howard climcost coacch |  |
 | `climate` | \*\*fair\*\* witchco2  |  |
 | `savings` |  \*\*fixed\*\* flexible  | **Fixed saving rates (converging to DICE optimal in 2150\)** Free saving rates |
+| `n` | \*\*ed58\*\* maxiso3 |  Regional aggregation (58 regions or 154 iso3 countries plus RoW or other self defined |
 
 ## Contributing authors:
 

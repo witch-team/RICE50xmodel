@@ -1,9 +1,14 @@
 # MODULE OCEAN
 *
-* Module for representing ocean capital, damages, and ecosystem services
+* Module for representing ocean capital, ecosystem services, and damages
 #____________
 # REFERENCES
-* Based on ongoing work on ocean damages and valuation
+* Bastien-Olvera B. A., Aburto-Oropeza O., Brander L., Cheung W. W. L., Emmerling J., Free C. M., Granella F., Tavoni M., Verschuur J., Ricke K. (2025): Social Cost of Carbon for the Oceans, preliminary draft
+* How to run:
+* First create baseline with impact run:         --n=maxiso3 --mod_ocean=1 --nameout=ocean_damage
+* Second, run th ereference run without damages: --n=maxiso3 --mod_ocean=1 --nameout=ocean_today --policy=simulation_tatm_exogen --climate_of_today=1
+* Third, run with emission pulse:                --n=maxiso3 --mod_ocean=1 --mod_emission_pulse=ocean_damage --reference_marg_util=ocean_today
+* SCC is stored in the file results_ocean_damage_emission_pulse.gdx asunder the parameter "scc_pulse_ramsey_global"
 #=========================================================================
 *   ///////////////////////       SETTING      ///////////////////////
 #=========================================================================
@@ -65,7 +70,7 @@ Scalar ocean_theta_1                                'Substitutability parameter 
 Scalar ocean_theta_2                                'Substitutability parameter 2' / 0.21 /;
 Scalar ocean_income_elasticity_usenm                'Income elasticity for use values' / 0.222 /;
 Scalar ocean_income_elasticity_nonuse               'Income elasticity for nonuse values' / 0.243 /;
-Scalar vsl_start                                    'Value of Statistical Life [Million USD per capita]' / 7.4 /;
+Scalar vsl_start                                    'Value of a Statistical Life [Million US-$[2006] per capita]' / 7.4 /;
 Scalar ocean_health_eta                             'Health impact scaling factor' / 0.05 /;
 
 * Load data from GDX
@@ -88,7 +93,7 @@ ocean_s1_1 = 1;  # Weight of consumption in utility function                 #0.
 ocean_s1_2 = 1;  # Weight of use value in utility function                   #0.1
 ocean_s2_1 = 1;  # Weight of consumption and usevalue in utility function    #0.9
 ocean_s2_2 = 1;  # Weight of nonuse value in utility function                #0.1 
-vsl_start = 7.4;  # VSL in Million USD per capita
+vsl_start = 7.4; # VSL for the U.S. in Million USD per capita
 ocean_health_eta = 0.05;
 
 
@@ -114,13 +119,13 @@ $elseif.ph %phase%=='compute_data'
 #_________________________________________________________________________
 $elseif.ph %phase%=='declare_vars'
 
-POSITIVE VARIABLE CPC_OCEAN_DAM(t,n)                   'Consumption per capita after damages [$ per capita]'; 
-POSITIVE VARIABLE OCEAN_AREA(oc_capital,t,n)           'Area of ocean services [KM2]';
-POSITIVE VARIABLE OCEAN_USENM_VALUE(oc_capital,t,n)    'Use value of ocean services [Million USD]';
-POSITIVE VARIABLE OCEAN_USENM_VALUE_PERKM2(oc_capital,t,n) 'Use value per KM2 [Million USD per KM2]';
-POSITIVE VARIABLE OCEAN_NONUSE_VALUE(oc_capital,t,n)   'Nonuse value of ocean services [Million USD]';
+POSITIVE VARIABLE CPC_OCEAN_DAM(t,n)                        'Consumption per capita after damages [$ per capita]'; 
+POSITIVE VARIABLE OCEAN_AREA(oc_capital,t,n)                'Area of ocean services [KM2]';
+POSITIVE VARIABLE OCEAN_USENM_VALUE(oc_capital,t,n)         'Use value of ocean services [Million USD]';
+POSITIVE VARIABLE OCEAN_USENM_VALUE_PERKM2(oc_capital,t,n)  'Use value per KM2 [Million USD per KM2]';
+POSITIVE VARIABLE OCEAN_NONUSE_VALUE(oc_capital,t,n)        'Nonuse value of ocean services [Million USD]';
 POSITIVE VARIABLE OCEAN_NONUSE_VALUE_PERKM2(oc_capital,t,n) 'Nonuse value per KM2 [Million USD per KM2]';
-POSITIVE VARIABLE VSL(t,n)                             'Value of a Statistical Life [Million USD per capita]';
+POSITIVE VARIABLE VSL(t,n)                                  'Value of a Statistical Life [Million USD per capita]';
 
 ##  COMPUTE VARIABLES
 #_________________________________________________________________________
@@ -172,7 +177,10 @@ eq_ocean_cpc(t,n)$reg(n)..
 
 * Value of Statistical Life - scales with global average GDP
 eq_ocean_vsl(t,n)$reg(n)..
-    VSL(t,n) =E= vsl_start * (sum(nn, YNET.l(t,nn)) / sum(nn, pop(t,nn))) / (sum(nn, YNET.l('1',nn)) / sum(nn, pop('1',nn)));
+VSL(t,n) =E= vsl_start *
+(sum(nn, YNET.l('1',nn)) / sum(nn, pop('1',nn)))/ (YNET.l('1','usa') / pop('1','usa')) *          # rescaled to global GDP per capita from U.S.
+(sum(nn, YNET.l(t,nn)) / sum(nn, pop(t,nn))) / (sum(nn, YNET.l('1',nn)) / sum(nn, pop('1',nn)))   # growing at global per capita growth rate
+;
 
 * CORAL REEFS ---------------------------------------------------------------
 * Use value per km2 (scales with income elasticity)
@@ -254,6 +262,47 @@ $elseif.ph %phase%=='before_solve'
 ##  AFTER SOLVE
 #_________________________________________________________________________
 $elseif.ph %phase%=='after_solve'
+
+## REPORTING
+#_________________________________________________________________________
+$elseif.ph %phase%=='report'
+
+Parameter marg_util_cons(t,n);
+
+ marg_util_cons(t,n) = (1/(1-elasmu)) * (
+        (
+            ocean_s2_1 * (
+                ocean_s1_1 * CPC_OCEAN_DAM.l(t,n)**ocean_theta_1 +
+                ocean_s1_2 * (
+                    sum(oc_capital$(oc_nonmkt_capital(oc_capital) and map_n_oc(n,oc_capital)), 
+                        OCEAN_USENM_VALUE.l(oc_capital,t,n)
+                    ) / pop(t,n)
+                )**ocean_theta_1
+            )**(ocean_theta_2/ocean_theta_1)
+            +
+            ocean_s2_2 * (
+                (sum(oc_capital$(oc_nonuse_capital(oc_capital) and map_n_oc(n,oc_capital)), 
+                    OCEAN_NONUSE_VALUE.l(oc_capital,t,n)
+                ) / pop(t,n))**ocean_theta_2
+            )
+        )**(((1-elasmu)/ocean_theta_2)-1)
+ )
+ * ((1-elasmu)/ocean_theta_2)
+ * ocean_s2_1 * (
+                ocean_s1_1 * CPC_OCEAN_DAM.l(t,n)**ocean_theta_1 +
+                ocean_s1_2 * (
+                    sum(oc_capital$(oc_nonmkt_capital(oc_capital) and map_n_oc(n,oc_capital)), 
+                        OCEAN_USENM_VALUE.l(oc_capital,t,n)
+                    ) / pop(t,n)
+                )**ocean_theta_1
+            )**((ocean_theta_2/ocean_theta_1)-1)
+ * (ocean_theta_2/ocean_theta_1)
+ * ocean_s1_1 * CPC_OCEAN_DAM.l(t,n)**(ocean_theta_1-1)
+ * ocean_theta_1
+ ;
+
+
+
 
 ##  GDX ITEMS
 #_________________________________________________________________________

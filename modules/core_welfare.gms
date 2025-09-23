@@ -163,6 +163,13 @@ welfare_bge(n)$nsolve(n) = ( welfare_regional(n) / (sum(t, PROB.l(t) * ( ( pop(t
 *     ///////////////////////     REPORTING     ///////////////////////
 #===============================================================================
 
+## REPORTING
+#_________________________________________________________________________
+$elseif.ph %phase%=='report'
+
+Parameter marg_util_cons(t,n);
+marg_util_cons(t,n) = CPC.l(t,n)**(-elasmu);
+
 ##  GDX ITEMS
 #_________________________________________________________________________
 $elseif.ph %phase%=='gdx_items'
@@ -171,6 +178,7 @@ $elseif.ph %phase%=='gdx_items'
 nweights
 welfare_bge
 welfare_regional
+marg_util_cons
 
 # Variables --------------------------------------------
 UTILITY
