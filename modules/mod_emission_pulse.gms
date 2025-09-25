@@ -108,87 +108,40 @@ $elseif.ph %phase%=='after_solve'
 *-------------------------------------------------------------------------------
 $elseif.ph %phase%=='report'
 
+set dr / '1.5', '2', '2.5', '3', '5', 'ramsey'/
 Parameter damrt(t,n);
 Parameter tatm_difference(t);
-Parameter scc_pulse_ramsey_global(tref,nref);
-Parameter scc_pulse_ramsey_global_regshare(tref,nref);
-Parameter scc_pulse_discounted_global(*,tref,nref);
-Parameter scc_pulse_ramsey_global_regionalref(tref,nref);
-Parameter scc_pulse_ramsey_only_regional(tref,nref);
+Parameter scc_pulse(dr, tref);
 
 damrt(t,n) = -(C.l(t,n) - C_nopulse.l(t,n)); #positive values = damages in T$
+#now we better compute monetized damages based on UTARG as more genera lcase
+damrt(t,n) = pop(t,n) * (((UTARG_nopulse.l(t,n)**(1-elasmu)-UTARG.l(t,n)**(1-elasmu))/(1-elasmu)) / (marg_util_cons_reference(t,n)));
+
 tatm_difference(t)= TATM.l(t) - TATM_nopulse.l(t);
 
 *for now compute SCC along the baseline, i.e., using arguments of welfare function at original level
 C.l(t,n) = C_nopulse.l(t,n);
 
-#compute SCC (as in Rennert et al. (2022)) using global SDF
-scc_pulse_ramsey_global(tref,nref) =
-  (sum(t$(year(t) ge year(tref)),
-           ((sum(nn,C.l(t,nn)) / sum(nn,pop(t,nn)))**(-elasmu)) / ((sum(nn,C.l(tref,nn)) / sum(nn,pop(tref,nn)))**(-elasmu))
-           * rr(t)
-           * sum(nn,damrt(t,nn)))
-           / (%emission_pulse%*1e-3)
-            * (1e3)
-       )
-;
-
-#now overwritten using UTARG directly
-scc_pulse_ramsey_global(tref,nref) =
+#compute SCC (as in Rennert et al. (2022)) using global SDF using UTARG directly
+scc_pulse('ramsey',tref) =
   (sum(t$(year(t) ge year(tref)),
              (rr(t)*(sum(nn,C.l(t,nn)) / sum(nn,pop(t,nn)))**(-elasmu)) / (rr(tref)*(sum(nn,C.l(tref,nn)) / sum(nn,pop(tref,nn)))**(-elasmu))
-             * sum(nn, pop(t,nn)/sum(nnn,pop(t,nnn)) * ((UTARG_nopulse.l(t,nn)**(1-elasmu)-UTARG.l(t,nn)**(1-elasmu))/(1-elasmu)) / (marg_util_cons_reference(t,nn) ) )
-             * sum(nnn,pop(t,nnn)))
+             * sum(nn, damrt(t,nn))
            / (%emission_pulse%)
-            )
-;
-
-
-#compute SCC (as in Rennert et al. (2022)) using global SDF, regional contribution of each region's impacts
-scc_pulse_ramsey_global_regshare(tref,nref) =
-  (sum(t$(year(t) ge year(tref)),
-           ((sum(nn,C.l(t,nn)) / sum(nn,pop(t,nn)))**(-elasmu)) / ((sum(nn,C.l(tref,nn)) / sum(nn,pop(tref,nn)))**(-elasmu))
-           * rr(t)
-           * damrt(t,nref))
-           / (%emission_pulse%*1e-3)
-            * (1e3)
-       )
-;
-
-#global SCC evaluated at regional marginal utility of consumption today (Anthoff and Emmerling, 2019)
-scc_pulse_ramsey_global_regionalref(tref,nref) =
-  (sum(t$(year(t) ge year(tref)),
-       sum(n,
-           (C.l(t,n) / pop(t,n))**(-elasmu) / (C.l(tref,nref) / pop(tref,nref))**(-elasmu)
-           * rr(t)
-           * damrt(t,n))
-           / (%emission_pulse%*1e-3)
-            * (1e3)
-           )
-       )
-;
-
-#regional SCC only taking regional impacts and using regional SDF
-scc_pulse_ramsey_only_regional(tref,nref) =
-  (sum(t$(year(t) ge year(tref)),
-           (C.l(t,nref) / pop(t,nref))**(-elasmu) / (C.l(tref,nref) / pop(tref,nref))**(-elasmu)
-           * rr(t)
-           * damrt(t,nref)
-           / (%emission_pulse%*1e-3)
-            * (1e3)
-           )
-       )
+            ))
 ;
 
 #SCC aligned with IAWG with 3 different discount rates, allowing to separate regional impacts
-scc_pulse_discounted_global('2',tref,n) = (sum((t)$(year(t) ge year(tref)), damrt(t,n) * (1+0.02)**(-(year(t)-year(tref))) ) / (%emission_pulse%*1e-3)) * 1e3; # in T$/GtCO2 to $/tCO2eq, just simple discounted value
-scc_pulse_discounted_global('3.5',tref,n) = (sum((t)$(year(t) ge year(tref)), damrt(t,n) * (1+0.035)**(-(year(t)-year(tref))) ) / (%emission_pulse%*1e-3)) * 1e3; # in T$/GtCO2 to $/tCO2eq, just simple discounted value
-scc_pulse_discounted_global('5',tref,n) = (sum((t)$(year(t) ge year(tref)), damrt(t,n) * (1+0.05)**(-(year(t)-year(tref))) ) / (%emission_pulse%*1e-3)) * 1e3; # in T$/GtCO2 to $/tCO2eq, just simple discounted value
+scc_pulse('1.5',tref) = (sum((t,n)$(year(t) ge year(tref)), damrt(t,n) * (1+0.015)**(-(year(t)-year(tref))) ) / (%emission_pulse%));
+scc_pulse('2',tref) = (sum((t,n)$(year(t) ge year(tref)), damrt(t,n) * (1+0.02)**(-(year(t)-year(tref))) ) / (%emission_pulse%));
+scc_pulse('2.5',tref) =  (sum((t,n)$(year(t) ge year(tref)), damrt(t,n) * (1+0.025)**(-(year(t)-year(tref))) ) / (%emission_pulse%));
+scc_pulse('3',tref) =  (sum((t,n)$(year(t) ge year(tref)), damrt(t,n) * (1+0.03)**(-(year(t)-year(tref))) ) / (%emission_pulse%));
+scc_pulse('5',tref) =  (sum((t,n)$(year(t) ge year(tref)), damrt(t,n) * (1+0.05)**(-(year(t)-year(tref))) ) / (%emission_pulse%));
 
 
 #Just for quick analysis display standard global SCC for 2020 in US-$[2020] using US-$ GDP deflator 1.298763
-Parameters scc2020;
-scc2020          = 1.298763 * valuein(2020, sum(nn,scc_pulse_ramsey_global(tt,nn))/sum(nn,1));
+Parameters scc2020(dr);
+scc2020(dr) = 1.298763 * valuein(2020, scc_pulse(dr, tt));
 display scc2020;
 
 
@@ -206,11 +159,7 @@ emission_pulse
 scc_nopulse
 damrt
 tatm_difference
-scc_pulse_ramsey_global
-scc_pulse_ramsey_global_regshare
-scc_pulse_discounted_global
-scc_pulse_ramsey_global_regionalref
-scc_pulse_ramsey_only_regional
+scc_pulse
 marg_util_cons_reference
 
 $endif.ph

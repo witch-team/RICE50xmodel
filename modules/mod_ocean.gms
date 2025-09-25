@@ -8,7 +8,7 @@
 * First create baseline with impact run:         --n=maxiso3 --mod_ocean=1 --nameout=ocean_damage
 * Second, run th ereference run without damages: --n=maxiso3 --mod_ocean=1 --nameout=ocean_today --policy=simulation_tatm_exogen --climate_of_today=1
 * Third, run with emission pulse:                --n=maxiso3 --mod_ocean=1 --mod_emission_pulse=ocean_damage --reference_marg_util=ocean_today
-* SCC is stored in the file results_ocean_damage_emission_pulse.gdx asunder the parameter "scc_pulse_ramsey_global"
+* SCC is stored in the file results_ocean_damage_emission_pulse.gdx asunder the parameter "scc_pulse"
 #=========================================================================
 *   ///////////////////////       SETTING      ///////////////////////
 #=========================================================================
