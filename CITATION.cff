@@ -1,0 +1,53 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata from this file."
+type: software
+title: "RICE50+: The multi-regional Integrated Assessment Model RICE50+"
+abstract: "A calibrated multi-regional Integrated Assessment Model with 50+ regions, calibrated abatement cost curves, a modular and phase structure of the code, and additional optional modules for climate change economics analysis."
+version: "2.6.0"
+date-released: 2025-09-25
+authors:
+  - family-names: "Andreoni"
+    given-names: "Pietro"
+    affiliation: ["Fondazione Centro Euro-Mediterraneo sui Cambiamenti Climatici", "RFF-CMCC European Institute on Economics and the Environment"]
+  - family-names: "Calcaterra"
+    given-names: "Matteo"
+    affiliation: ["Fondazione Centro Euro-Mediterraneo sui Cambiamenti Climatici", "RFF-CMCC European Institute on Economics and the Environment"]
+  - family-names: "Chiani"
+    given-names: "Leonardo"
+    affiliation: ["Fondazione Centro Euro-Mediterraneo sui Cambiamenti Climatici", "RFF-CMCC European Institute on Economics and the Environment"]
+  - family-names: "Drouet"
+    given-names: "Laurent"
+    affiliation: ["Fondazione Centro Euro-Mediterraneo sui Cambiamenti Climatici", "RFF-CMCC European Institute on Economics and the Environment"]
+  - family-names: "Emmerling"
+    given-names: "Johannes"
+    affiliation: ["Fondazione Centro Euro-Mediterraneo sui Cambiamenti Climatici", "RFF-CMCC European Institute on Economics and the Environment"]
+  - family-names: "Gazzotti"
+    given-names: "Paolo"
+    affiliation: ["Fondazione Centro Euro-Mediterraneo sui Cambiamenti Climatici", "RFF-CMCC European Institute on Economics and the Environment"]
+  - family-names: "Granella"
+    given-names: "Francesco"
+    affiliation: ["Fondazione Centro Euro-Mediterraneo sui Cambiamenti Climatici", "RFF-CMCC European Institute on Economics and the Environment"]
+  - family-names: "Marangoni"
+    given-names: "Giacomo"
+    affiliation: ["Fondazione Centro Euro-Mediterraneo sui Cambiamenti Climatici", "RFF-CMCC European Institute on Economics and the Environment"]
+  - family-names: "Reis"
+    given-names: "Lara Aleluia"
+    affiliation: ["Fondazione Centro Euro-Mediterraneo sui Cambiamenti Climatici", "RFF-CMCC European Institute on Economics and the Environment"]
+  - family-names: "Taberna"
+    given-names: "Alessandro"
+    affiliation: ["Fondazione Centro Euro-Mediterraneo sui Cambiamenti Climatici", "RFF-CMCC European Institute on Economics and the Environment"]
+  - family-names: "Tavoni"
+    given-names: "Massimo"
+    affiliation: ["Fondazione Centro Euro-Mediterraneo sui Cambiamenti Climatici", "RFF-CMCC European Institute on Economics and the Environment"]
+license: "GPL-3.0"
+repository-code: "https://github.com/witch-team/RICE50xmodel"
+keywords:
+  - "model"
+  - "climate change"
+  - "integrated assessment model"
+  - "economics"
+  - "DICE"
+  - "carbon pricing"
+  - "climate policy"
+  - "mitigation"
+  - "adaptation"
